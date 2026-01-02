@@ -1,7 +1,17 @@
 import axios from 'axios';
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+// Verifier le mode de production ou de développement dans le fichier .env
+const MODE = import.meta.env.VITE_APP_MODE;
+
+let API_BASE_URL = '';
+if (MODE === 'production') {
+  API_BASE_URL = import.meta.env.VITE_API_BASE_URL_PRODUCTION;
+} else if (MODE === 'preproduction') {
+  API_BASE_URL = import.meta.env.VITE_API_BASE_URL_PREPRODUCTION;
+} else {
+  API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+}
 
 class ApiClient {
   private client: AxiosInstance;
