@@ -78,6 +78,15 @@ class UserService {
     const response = await apiClient.post<{ data: User }>(`/users/${uuid}/activate`);
     return response.data;
   }
+
+  async changePassword(data: {
+    current_password: string;
+    new_password: string;
+    new_password_confirmation: string;
+  }): Promise<{ data: User; message: string }> {
+    const response = await apiClient.post<{ data: User; message: string }>('/users/change-password', data);
+    return response.data;
+  }
 }
 
 export const userService = new UserService();

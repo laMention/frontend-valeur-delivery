@@ -119,6 +119,16 @@ export default function Login() {
             <Button type="submit" loading={loading} variant="primary" className="w-full">
               Se connecter
             </Button>
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-sm text-primary-red hover:underline cursor-pointer"
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
           </form>
         </div>
       </div>

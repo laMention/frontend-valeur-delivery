@@ -30,18 +30,14 @@ export interface AuthResponse {
 
 class AuthService {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    try {
+    
       const response = await apiClient.post<AuthResponse>('/auth/login', credentials);
       if (response.data.token) {
         localStorage.setItem('auth_token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
       return response.data;
-    } catch (error: any) {
-      // Rejeter l'erreur pour que le contrôleur puisse la gérer
-      // Ne pas modifier localStorage en cas d'erreur
-      throw error;
-    }
+    
   }
 
   async register(data: RegisterData): Promise<AuthResponse> {
@@ -64,17 +60,34 @@ class AuthService {
     }
   }
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
-    const response = await apiClient.post<{ message: string }>('/auth/forgot-password', { email });
+  async forgotPassword(identifier: string, channel: 'email' | 'sms' | 'whatsapp' = 'email'): Promise<{ success: boolean; message: string; data: { user_id: string; channel: string; expires_at: string } }> {
+    const response = await apiClient.post<{ success: boolean; message: string; data: { user_id: string; channel: string; expires_at: string } }>('/auth/forgot-password', {
+      identifier,
+      channel,
+    });
     return response.data;
   }
 
-  async resetPassword(token: string, email: string, password: string, password_confirmation: string): Promise<{ message: string }> {
-    const response = await apiClient.post<{ message: string }>('/auth/reset-password', {
-      token,
-      email,
+  async verifyOtp(userId: string, otpCode: string): Promise<{ success: boolean; message: string; data: { reset_token: string; user_id: string } }> {
+    const response = await apiClient.post<{ success: boolean; message: string; data: { reset_token: string; user_id: string } }>('/auth/verify-otp', {
+      user_id: userId,
+      otp_code: otpCode,
+    });
+    return response.data;
+  }
+
+  async resendOtp(identifier: string): Promise<{ success: boolean; message: string; data: { user_id: string; channel: string; expires_at: string } }> {
+    const response = await apiClient.post<{ success: boolean; message: string; data: { user_id: string; channel: string; expires_at: string } }>('/auth/resend-otp', {
+      identifier: identifier,
+    });
+    return response.data;
+  }
+
+  async resetPassword(resetToken: string, password: string, passwordConfirmation: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', {
+      reset_token: resetToken,
       password,
-      password_confirmation,
+      password_confirmation: passwordConfirmation,
     });
     return response.data;
   }
@@ -92,8 +105,8 @@ class AuthService {
     return localStorage.getItem('auth_token');
   }
 
-  async getMe(): Promise<{ data: any }> {
-    const response = await apiClient.get<{ data: any }>('/auth/me');
+  async getMe(): Promise<{ data: { uuid: string; name: string; email: string; phone?: string; roles: Array<{ uuid: string; name: string; display_name: string }> } }> {
+    const response = await apiClient.get<{ data: { uuid: string; name: string; email: string; phone?: string; roles: Array<{ uuid: string; name: string; display_name: string }> } }>('/auth/me');
     if (response.data.data) {
       localStorage.setItem('user', JSON.stringify(response.data.data));
     }

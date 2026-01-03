@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useToastContext } from '../../contexts/ToastContext';
 import { userService } from '../../services/UserService';
 import { fileService } from '../../services/FileService';
 import Input from '../../components/common/Input';
+import PasswordInput from '../../components/common/PasswordInput';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 
 export default function SettingsView() {
   const { user } = useAuth();
+  const { success: showSuccess, error: showError } = useToastContext();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,8 +22,8 @@ export default function SettingsView() {
   });
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -37,8 +40,6 @@ export default function SettingsView() {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
@@ -53,12 +54,15 @@ export default function SettingsView() {
       });
 
       if (result.data) {
-        setSuccess('Profil mis à jour avec succès');
+        showSuccess('Profil mis à jour avec succès');
         // Recharger les données utilisateur
         window.location.reload();
       }
     } catch (error: unknown) {
-      setError('Erreur lors de la mise à jour du profil');
+      const errorMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Erreur lors de la mise à jour du profil';
+      showError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -66,34 +70,69 @@ export default function SettingsView() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setPasswordError('');
 
-    if (formData.new_password !== formData.confirm_password) {
-      setError('Les mots de passe ne correspondent pas');
+    // Validation côté client
+    if (!formData.current_password) {
+      setPasswordError('Le mot de passe actuel est requis');
+      return;
+    }
+
+    if (!formData.new_password) {
+      setPasswordError('Le nouveau mot de passe est requis');
       return;
     }
 
     if (formData.new_password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères');
+      setPasswordError('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
 
-    setLoading(true);
+    if (formData.new_password !== formData.confirm_password) {
+      setPasswordError('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    if (formData.current_password === formData.new_password) {
+      setPasswordError('Le nouveau mot de passe doit être différent de l\'ancien');
+      return;
+    }
+
+    setChangingPassword(true);
 
     try {
-      // TODO: Implémenter l'endpoint de changement de mot de passe
-      setSuccess('Mot de passe modifié avec succès');
-      setFormData({
-        ...formData,
-        current_password: '',
-        new_password: '',
-        confirm_password: '',
+      const result = await userService.changePassword({
+        current_password: formData.current_password,
+        new_password: formData.new_password,
+        new_password_confirmation: formData.confirm_password,
       });
+
+      if (result.data) {
+        showSuccess('Mot de passe modifié avec succès');
+        // Réinitialiser le formulaire
+        setFormData({
+          ...formData,
+          current_password: '',
+          new_password: '',
+          confirm_password: '',
+        });
+      }
     } catch (error: unknown) {
-      setError('Erreur lors du changement de mot de passe');
+      const errorResponse = error as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+      const errorMessage = errorResponse?.response?.data?.message || 'Erreur lors du changement de mot de passe';
+      const errors = errorResponse?.response?.data?.errors;
+      
+      if (errors) {
+        // Afficher la première erreur de validation
+        const firstError = Object.values(errors)[0]?.[0] || errorMessage;
+        setPasswordError(firstError);
+        showError(firstError);
+      } else {
+        setPasswordError(errorMessage);
+        showError(errorMessage);
+      }
     } finally {
-      setLoading(false);
+      setChangingPassword(false);
     }
   };
 
@@ -102,23 +141,25 @@ export default function SettingsView() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      setError('L\'image ne doit pas dépasser 5 Mo');
+      showError('L\'image ne doit pas dépasser 5 Mo');
       return;
     }
 
     setProfileImage(file);
-    setError('');
     setLoading(true);
 
     try {
       const result = await fileService.upload(file, 'profile_image', user?.uuid || '', 'App\\Models\\User', 'profile');
       if (result.data) {
-        setSuccess('Photo de profil mise à jour avec succès');
+        showSuccess('Photo de profil mise à jour avec succès');
         // Recharger les données utilisateur
         window.location.reload();
       }
     } catch (error: unknown) {
-      setError('Erreur lors de l\'upload de l\'image');
+      const errorMessage =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Erreur lors de l\'upload de l\'image';
+      showError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -127,18 +168,6 @@ export default function SettingsView() {
   return (
     <div>
       <h1 className={tailwindClasses.pageTitle}>Paramètres</h1>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
-          {success}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card title="Informations du profil">
@@ -202,33 +231,55 @@ export default function SettingsView() {
 
         <Card title="Changer le mot de passe" className="lg:col-span-2">
           <form onSubmit={handleChangePassword}>
+            {passwordError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded">
+                {passwordError}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input
+              <PasswordInput
                 label="Mot de passe actuel"
-                type="password"
                 value={formData.current_password}
-                onChange={(e) => setFormData({ ...formData, current_password: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, current_password: e.target.value });
+                  setPasswordError('');
+                }}
                 required
+                disabled={changingPassword}
               />
 
-              <Input
+              <PasswordInput
                 label="Nouveau mot de passe"
-                type="password"
                 value={formData.new_password}
-                onChange={(e) => setFormData({ ...formData, new_password: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, new_password: e.target.value });
+                  setPasswordError('');
+                }}
                 required
+                disabled={changingPassword}
+                minLength={8}
               />
 
-              <Input
+              <PasswordInput
                 label="Confirmer le mot de passe"
-                type="password"
                 value={formData.confirm_password}
-                onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, confirm_password: e.target.value });
+                  setPasswordError('');
+                }}
                 required
+                disabled={changingPassword}
               />
             </div>
 
-            <Button type="submit" loading={loading} variant="primary" className="mt-4">
+            <div className="mt-2 mb-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Le mot de passe doit contenir au moins 8 caractères.
+              </p>
+            </div>
+
+            <Button type="submit" loading={changingPassword} variant="primary" className="mt-4" disabled={changingPassword}>
               Changer le mot de passe
             </Button>
           </form>
