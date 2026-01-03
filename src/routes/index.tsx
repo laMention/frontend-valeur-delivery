@@ -5,6 +5,9 @@ import AdminLayout from '../components/layout/AdminLayout';
 
 // Views
 import Login from '../views/Login';
+import ForgotPassword from '../views/ForgotPassword';
+import VerifyOtp from '../views/VerifyOtp';
+import ResetPassword from '../views/ResetPassword';
 import Dashboard from '../views/Dashboard';
 import UserList from '../views/users/UserList';
 import UserForm from '../views/users/UserForm';
@@ -77,6 +80,9 @@ export default function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/verify-otp" element={<VerifyOtp />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route
           path="/"
           element={
@@ -249,17 +255,17 @@ export default function AppRoutes() {
         <Route
           path="/profile"
           element={
-            <ProtectedRoute requiredPage="/profile">
+            <PrivateRoute>
               <ProfileView />
-            </ProtectedRoute>
+            </PrivateRoute>
           }
         />
         <Route
           path="/settings"
           element={
-            <ProtectedRoute requiredPage="/settings">
+            <PrivateRoute>
               <SettingsView />
-            </ProtectedRoute>
+            </PrivateRoute>
           }
         />
         <Route
