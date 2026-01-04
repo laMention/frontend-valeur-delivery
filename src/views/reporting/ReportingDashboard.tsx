@@ -6,6 +6,8 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatCurrency } from '../../utils/formatters';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 
 export default function ReportingDashboard() {
   const [stats, setStats] = useState<ReportStats | null>(null);
@@ -16,6 +18,13 @@ export default function ReportingDashboard() {
     start_date: '',
     end_date: '',
   });
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
 
   useEffect(() => {
     loadData();
@@ -56,12 +65,37 @@ export default function ReportingDashboard() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      alert('Erreur lors de l\'export');
+      let message = 'Erreur lors de l\'export';
+      const errorResponse = error as { response?: { data?: Blob | { message?: string } } };
+      if (errorResponse.response?.data instanceof Blob) {
+        try {
+          const text = await errorResponse.response.data.text(); // convertir le Blob en texte
+          const json = JSON.parse(text);
+          message = json.message || message;
+        } catch (e) {
+          console.error('Impossible de parser la réponse JSON', e);
+        }
+      } else {
+        message = errorResponse.response?.data?.message || message;
+      }
+      setSnackbarMessage(message);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
   return (
     <div>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
       <div className="flex justify-between items-center mb-6">
         <h1 className={tailwindClasses.pageTitle}>Reporting</h1>
         <div className="flex gap-2">
