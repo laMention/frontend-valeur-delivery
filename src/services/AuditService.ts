@@ -24,8 +24,18 @@ export interface AuditFilters {
   target_type?: string;
   start_date?: string;
   end_date?: string;
+  period?: 'today' | 'yesterday' | 'range';
   page?: number;
   per_page?: number;
+  include_archived?: boolean;
+}
+
+export interface ArchiveResponse {
+  message: string;
+  data: {
+    archived: number;
+    failed: number;
+  };
 }
 
 class AuditService {
@@ -36,6 +46,13 @@ class AuditService {
 
   async getById(uuid: string): Promise<{ data: AuditLog }> {
     const response = await apiClient.get<{ data: AuditLog }>(`/audit-logs/${uuid}`);
+    return response.data;
+  }
+
+  async archive(logIds: string[]): Promise<ArchiveResponse> {
+    const response = await apiClient.post<ArchiveResponse>('/audit-logs/archive', {
+      log_ids: logIds,
+    });
     return response.data;
   }
 }

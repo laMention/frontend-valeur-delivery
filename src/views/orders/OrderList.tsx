@@ -10,6 +10,7 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
 import ConfirmModal from '../../components/common/ConfirmModal';
+import ImportOrdersModal from '../../components/orders/ImportOrdersModal';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime, formatCurrency } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +24,8 @@ export default function OrderList() {
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     status: '',
     search: '',
@@ -84,15 +87,59 @@ export default function OrderList() {
   const canEditOrder = () => isSuperAdmin() || canUpdate('order');
   const canDeleteOrder = () => isSuperAdmin() || canDelete('order');
 
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    setExporting(true);
+    try {
+      await orderService.export(filters, format);
+      success(`Export ${format.toUpperCase()} réussi`);
+    } catch (error: unknown) {
+      const errorMessage = 
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Erreur lors de l\'export';
+      showError(errorMessage);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportSuccess = () => {
+    loadOrders();
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className={tailwindClasses.pageTitle}>Commandes</h1>
-        {canCreate('order') && (
-          <Button onClick={() => navigate('/orders/new')}>
-            + Nouvelle commande
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {canCreate('order') && (
+            <>
+              <Button variant="secondary" onClick={() => setShowImportModal(true)}>
+                📥 Importer
+              </Button>
+              <Button 
+                variant="secondary" 
+                onClick={() => handleExport('csv')}
+                disabled={exporting}
+                loading={exporting}
+              >
+                📤 Exporter CSV
+              </Button>
+              <Button 
+                variant="secondary" 
+                onClick={() => handleExport('xlsx')}
+                disabled={exporting}
+                loading={exporting}
+              >
+                📤 Exporter Excel
+              </Button>
+            </>
+          )}
+          {canCreate('order') && (
+            <Button onClick={() => navigate('/orders/new')}>
+              + Nouvelle commande
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card title="Filtres" className="mb-6">
@@ -243,6 +290,12 @@ export default function OrderList() {
         cancelText="Annuler"
         variant="danger"
         loading={deletingOrder !== null}
+      />
+
+      <ImportOrdersModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleImportSuccess}
       />
     </div>
   );

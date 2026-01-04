@@ -76,10 +76,10 @@ class OrderService {
     await apiClient.delete(`/orders/${uuid}`);
   }
 
-  async importFromFile(file: File): Promise<{ data: { imported: number; errors: any[] } }> {
+  async import(file: File): Promise<{ success: boolean; message: string; data: { success: number; failed: number; errors: Array<{ line: number; message: string }> } }> {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await apiClient.post<{ data: { imported: number; errors: any[] } }>('/orders/import', formData, {
+    const response = await apiClient.post<{ success: boolean; message: string; data: { success: number; failed: number; errors: Array<{ line: number; message: string }> } }>('/orders/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -87,12 +87,41 @@ class OrderService {
     return response.data;
   }
 
-  async export(params?: { format?: 'csv' | 'pdf' | 'excel'; filters?: any }): Promise<Blob> {
+  async export(filters?: any, format: 'csv' | 'xlsx' = 'csv'): Promise<void> {
+    const params = { ...filters, format };
     const response = await apiClient.get('/orders/export', {
       params,
       responseType: 'blob',
     });
-    return response.data;
+
+    // Créer un lien de téléchargement
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = `commandes_${new Date().toISOString().split('T')[0]}.${format}`;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async downloadTemplate(format: 'csv' | 'xlsx' = 'csv'): Promise<void> {
+    const response = await apiClient.get('/orders/import-template', {
+      params: { format },
+      responseType: 'blob',
+    });
+
+    // Créer un lien de téléchargement
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = `modele_import_commandes.${format}`;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   }
 
   async getRoute(uuid: string): Promise<{
