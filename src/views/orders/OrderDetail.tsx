@@ -13,6 +13,7 @@ import Button from '../../components/common/Button';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import RouteMap from '../../components/orders/RouteMap';
 import LabelViewModal from '../../components/orders/LabelViewModal';
+import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime, formatCurrency } from '../../utils/formatters';
 import { assignmentService } from '../../services/AssignmentService';
@@ -49,6 +50,7 @@ export default function OrderDetail() {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -205,6 +207,12 @@ export default function OrderDetail() {
 
   const canEditOrder = () => isSuperAdmin() || canUpdate('order');
   const canDeleteOrder = () => isSuperAdmin() || canDelete('order');
+  const canReassignOrder = () => {
+    // Peut réassigner si la commande est assignée mais non livrée/annulée
+    return (isSuperAdmin() || canUpdate('order')) && 
+           order && 
+           (order.status === 'assigned' || order.status === 'picked' || order.status === 'delivering');
+  };
 
   if (loading) {
     return <div className="text-center py-12">Chargement...</div>;
@@ -356,6 +364,11 @@ export default function OrderDetail() {
                     ➕ Attribuer un livreur
                   </Button>
                 )}
+                {canReassignOrder() && (
+                  <Button variant="outline" onClick={() => setShowReassignModal(true)}>
+                    🔄 Réassigner la commande
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -420,6 +433,19 @@ export default function OrderDetail() {
             onClose={() => setShowLabelModal(false)}
             orderUuid={order.uuid}
             orderNumber={order.order_number}
+          />
+        )}
+
+        {/* Modal de réassignation */}
+        {order && (
+          <ReassignOrderModal
+            isOpen={showReassignModal}
+            onClose={() => setShowReassignModal(false)}
+            order={order}
+            onReassignSuccess={() => {
+              loadOrder();
+              setShowReassignModal(false);
+            }}
           />
         )}
       </div>

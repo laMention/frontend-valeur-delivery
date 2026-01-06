@@ -11,6 +11,7 @@ import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import ImportOrdersModal from '../../components/orders/ImportOrdersModal';
+import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime, formatCurrency } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +26,8 @@ export default function OrderList() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [orderToReassign, setOrderToReassign] = useState<Order | null>(null);
   const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     status: '',
@@ -86,6 +89,20 @@ export default function OrderList() {
 
   const canEditOrder = () => isSuperAdmin() || canUpdate('order');
   const canDeleteOrder = () => isSuperAdmin() || canDelete('order');
+  const canReassignOrder = (order: Order) => {
+    // Peut réassigner si la commande est assignée mais non livrée/annulée
+    return (isSuperAdmin() || canUpdate('order')) && 
+           (order.status === 'assigned' || order.status === 'picked' || order.status === 'delivering');
+  };
+
+  const handleReassignClick = (order: Order) => {
+    setOrderToReassign(order);
+    setShowReassignModal(true);
+  };
+
+  const handleReassignSuccess = () => {
+    loadOrders();
+  };
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
     setExporting(true);
@@ -250,6 +267,14 @@ export default function OrderList() {
                         >
                           Voir
                         </Button>
+                        {canReassignOrder(order) && (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleReassignClick(order)}
+                          >
+                            Réassigner
+                          </Button>
+                        )}
                         {canEditOrder() && (
                           <Button
                             variant="outline"
@@ -297,6 +322,18 @@ export default function OrderList() {
         onClose={() => setShowImportModal(false)}
         onSuccess={handleImportSuccess}
       />
+
+      {orderToReassign && (
+        <ReassignOrderModal
+          isOpen={showReassignModal}
+          onClose={() => {
+            setShowReassignModal(false);
+            setOrderToReassign(null);
+          }}
+          order={orderToReassign}
+          onReassignSuccess={handleReassignSuccess}
+        />
+      )}
     </div>
   );
 }

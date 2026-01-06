@@ -4,7 +4,7 @@ export interface ReconciliationScan {
   uuid: string;
   order_uuid: string;
   user_uuid: string;
-  scan_type: 'delivery' | 'return' | 'stocked' | 'not_found';
+  scan_type: 'pickup' | 'warehouse_in' | 'warehouse_out' | 'delivery' | 'return' | 'not_found';
   location?: {
     lat: number;
     lng: number;
@@ -25,7 +25,7 @@ export interface ReconciliationStats {
 
 export interface ScanReconciliationData {
   barcode_value: string;
-  scan_type: 'delivery' | 'return' | 'stocked' | 'not_found';
+  scan_type: 'pickup' | 'warehouse_in' | 'warehouse_out' | 'delivery' | 'return' | 'not_found';
   location?: {
     lat: number;
     lng: number;

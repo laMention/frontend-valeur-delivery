@@ -5,6 +5,8 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import { tailwindClasses } from '../../utils/tailwindClasses';
+import { useToastContext } from '../../contexts/ToastContext';
+
 
 export default function ReconciliationView() {
   const [barcode, setBarcode] = useState('');
@@ -14,6 +16,7 @@ export default function ReconciliationView() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const { success, error: showError } = useToastContext();
 
   useEffect(() => {
     loadStats();
@@ -27,6 +30,9 @@ export default function ReconciliationView() {
       if (result.data) {
         setStats(result.data);
       }
+
+      console.log(result.data);
+      console.log(stats);
     } catch (error) {
       console.error('Error loading stats:', error);
     } finally {
@@ -47,7 +53,7 @@ export default function ReconciliationView() {
 
   const handleScan = async () => {
     if (!barcode) {
-      alert('Veuillez entrer un code-barres');
+      showError('Veuillez entrer un code-barres');
       return;
     }
 
@@ -57,13 +63,13 @@ export default function ReconciliationView() {
         barcode_value: barcode,
         scan_type: scanType,
       });
-      alert('Scan enregistré avec succès');
+      success('Scan enregistré avec succès');
       setBarcode('');
       loadStats();
       loadDiscrepancies();
     } catch (error: unknown) {
       const errorMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erreur lors du scan';
-      alert(errorMessage);
+      showError(errorMessage);
     } finally {
       setScanning(false);
     }
@@ -85,7 +91,7 @@ export default function ReconciliationView() {
                 className={tailwindClasses.input}
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
-                onKeyPress={(e) => {
+                onKeyDown={(e: any) => {
                   if (e.key === 'Enter') {
                     handleScan();
                   }

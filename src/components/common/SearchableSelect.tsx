@@ -99,8 +99,8 @@ export default function SearchableSelect({
                     setIsOpen(false);
                     setSearchTerm('');
                   }}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                    value === option.value ? 'bg-primary-red text-white hover:bg-red-800' : 'text-gray-900'
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-800 hover:text-white ${
+                    value === option.value ? 'bg-primary-red text-white bg-red-800 hover:bg-red-800' : 'text-gray-900'
                   }`}
                 >
                   {option.label}
