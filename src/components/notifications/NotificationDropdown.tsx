@@ -5,6 +5,7 @@ import { useTheme } from '../../hooks/useTheme';
 import type { Notification } from '../../models/Notification';
 import { formatDateTime } from '../../utils/formatters';
 import Badge from '../common/Badge';
+import { Link } from 'react-router-dom';
 
 interface NotificationDropdownProps {
   onClose: () => void;
@@ -160,6 +161,12 @@ export default function NotificationDropdown({ onClose, onNotificationRead }: No
             ))}
           </div>
         )}
+      </div>
+      {/* Lien vers la liste des notifications */}
+      <div className="p-4">
+        <Link to="/notifications" className="text-sm text-red-500 hover:underline">
+          Voir toutes les notifications
+        </Link>
       </div>
     </div>
   );

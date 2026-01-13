@@ -14,6 +14,10 @@ import { tailwindClasses } from '../../utils/tailwindClasses';
 import type { Partner } from '../../models/Partner';
 import type { Zone } from '../../models/Zone';
 import type { Order, CreateOrderData, UpdateOrderData } from '../../services/OrderService';
+import { usePermissions } from '../../hooks/usePermissions';
+import type { Role } from '../../models/User';
+
+
 
 interface OrderItem {
   product_name: string;
@@ -40,20 +44,7 @@ export default function OrderForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { success, error: showError } = useToastContext();
-  const [formData, setFormData] = useState<CreateOrderData>({
-    order_number: '',
-    partner_id: '',
-    customer_name: '',
-    customer_phone: '',
-    delivery_address: '',
-    pickup_address: '',
-    package_weight_kg: 1,
-    is_express: false,
-    zone_uuid: '',
-    reserved_at: new Date().toISOString().slice(0, 16),
-    total_amount: 0,
-    order_amount: 0,
-  });
+  
   const [items, setItems] = useState<OrderItem[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -67,6 +58,25 @@ export default function OrderForm() {
   }>({});
   const [isPartner, setIsPartner] = useState(false);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
+  const { getUserRoles } = usePermissions();
+  const userRoles = getUserRoles();
+  const { user: currentUser } = useAuth();
+
+  const [formData, setFormData] = useState<CreateOrderData>({
+    order_number: '',
+    partner_id: currentUser?.partner?.uuid || '',
+    customer_name: '',
+    customer_phone: '',
+    delivery_address: '',
+    pickup_address: '',
+    package_weight_kg: 1,
+    is_express: false,
+    zone_uuid: '',
+    reserved_at: new Date().toISOString().slice(0, 16),
+    total_amount: 0,
+    order_amount: 0,
+  });
+
 
   useEffect(() => {
     loadPartners();
@@ -85,16 +95,8 @@ export default function OrderForm() {
     
     // Si partenaire, récupérer le partenaire associé
     if (partnerRole) {
-      try {
-        // Chercher le partenaire associé à cet utilisateur
-        const partnersList = await partnerService.getAll();
-        const userPartner = partnersList.data?.find((p: Partner) => p.user_id === user?.uuid);
-        if (userPartner) {
-          setFormData(prev => ({ ...prev, partner_id: userPartner.uuid }));
-        }
-      } catch (error) {
-        console.error('Error loading user partner:', error);
-      }
+        const userPartner = currentUser?.partner;
+        setFormData(prev => ({ ...prev, partner_id: userPartner?.uuid || '' }));  
     }
   };
 
@@ -308,18 +310,43 @@ export default function OrderForm() {
                 placeholder="Ex: CMD-2025-001"
                 disabled={!!uuid}
               />
-
-              <Select
-                label="Vendeur (Partenaire) *"
-                value={formData.partner_id}
-                onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
-                options={[
-                  { value: '', label: 'Sélectionner un partenaire' },
-                  ...partners.map(p => ({ value: p.uuid, label: p.company_name }))
-                ]}
-                required
-                disabled={isPartner}
-              />
+              {/* Si l'utilisateur n'est pas un partenaire, afficher le select pour sélectionner un partenaire */}
+              {!userRoles.some((r: any) => r.name === 'partner' || r.name === 'partenaire') && (
+                <Select
+                  label="Vendeur (Partenaire) *"
+                  value={formData.partner_id}
+                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  options={[
+                    { value: '', label: 'Sélectionner un partenaire' },
+                    ...partners.map(p => ({ value: p.uuid, label: p.company_name }))
+                  ]}
+                  required
+                />
+              )}
+              {/* Si l'utilisateur est un partenaire, afficher le nom de l'entreprise */}
+              {userRoles.some((r: Role) => r.name === 'partner' || r.name === 'partenaire') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Vendeur ({currentUser?.partner?.company_name})
+                  </label>
+                  <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600">
+                  
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    
+                      {currentUser?.partner?.company_name || 'Votre entreprise'}
+                    </p>
+                  </div>
+                  <Input
+                      type='hidden'
+                      name='partner_id'
+                      value={currentUser?.partner?.uuid}
+                      onChange={(e) => setFormData({ ...formData, partner_id: currentUser?.partner?.uuid })}
+                    />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Les commandes créées vous seront automatiquement attribuées
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 

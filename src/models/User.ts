@@ -1,3 +1,6 @@
+import type { Courier } from "./Courier";
+import type { Partner } from "./Partner";
+
 export interface User {
   uuid: string;
   name: string;
@@ -5,6 +8,8 @@ export interface User {
   phone?: string;
   is_active: boolean;
   roles?: Role[];
+  partner?: Partner;
+  courier?: Courier;
   created_at: string;
   updated_at: string;
   files?: File[];

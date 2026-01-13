@@ -36,6 +36,7 @@ import RoleForm from '../views/roles/RoleForm';
 import ZoneList from '../views/zones/ZoneList';
 import ZoneForm from '../views/zones/ZoneForm';
 
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
 
