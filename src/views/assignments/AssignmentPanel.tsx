@@ -10,6 +10,8 @@ import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import Badge from '../../components/common/Badge';
 import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
+import CouriersMap from '../../components/assignments/CouriersMap';
+import Select from '../../components/common/Select';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime } from '../../utils/formatters';
 import { useToastContext } from '../../contexts/ToastContext';
@@ -30,6 +32,13 @@ export default function AssignmentPanel() {
   const [showAllCouriers, setShowAllCouriers] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [assignmentToReassign, setAssignmentToReassign] = useState<DeliveryAssignment | null>(null);
+  const [mapFilters, setMapFilters] = useState<{
+    vehicleType: 'moto' | 'voiture' | 'velo' | '';
+    availability: 'all' | 'available' | 'delivering' | 'offline';
+  }>({
+    vehicleType: '',
+    availability: 'all',
+  });
   const { success, error: showError } = useToastContext();
 
   useEffect(() => {
@@ -149,6 +158,52 @@ export default function AssignmentPanel() {
   return (
     <div>
       <h1 className={tailwindClasses.pageTitle}>Attributions de livraisons</h1>
+
+      {/* Carte GPS des livreurs */}
+      <Card title="📍 Position GPS des livreurs en temps réel" className="mb-6">
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Type de véhicule"
+            value={mapFilters.vehicleType}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, vehicleType: e.target.value as any })
+            }
+            options={[
+              { value: '', label: 'Tous les véhicules' },
+              { value: 'moto', label: 'Moto' },
+              { value: 'voiture', label: 'Voiture' },
+              { value: 'velo', label: 'Vélo' },
+            ]}
+          />
+          <Select
+            label="Disponibilité"
+            value={mapFilters.availability}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, availability: e.target.value as any })
+            }
+            options={[
+              { value: 'all', label: 'Tous' },
+              { value: 'available', label: 'Disponibles' },
+              { value: 'delivering', label: 'En livraison' },
+              { value: 'offline', label: 'Hors ligne' },
+            ]}
+          />
+        </div>
+        <CouriersMap
+          couriers={couriers}
+          assignmentCounts={assignmentCounts}
+          selectedCourierId={selectedCourier}
+          filters={mapFilters}
+          onCourierClick={(courier) => {
+            setSelectedCourier(courier.id);
+          }}
+          autoRefresh={true}
+          refreshInterval={10000}
+          onCouriersUpdate={(updatedCouriers) => {
+            setCouriers(updatedCouriers);
+          }}
+        />
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card title="Attribuer une commande">
