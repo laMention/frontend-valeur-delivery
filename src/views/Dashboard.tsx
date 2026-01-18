@@ -3,6 +3,7 @@ import { reportingService } from '../services/ReportingService';
 import Card from '../components/common/Card';
 import { tailwindClasses } from '../utils/tailwindClasses';
 import { formatCurrency } from '../utils/formatters';
+import RecentActivities from '../components/common/RecentActivities';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -75,9 +76,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        <Card title="Activité récente">
-          <p className="text-gray-600">Les activités récentes seront affichées ici</p>
-        </Card>
+          <RecentActivities />
       </div>
     </div>
   );

@@ -10,7 +10,9 @@ export interface CreateOrderData {
   customer_name: string;
   customer_phone: string;
   delivery_address: string;
-  pickup_address?: string;
+  pickup_address: string;
+  pickup_latitude?: number;
+  pickup_longitude?: number;
   package_weight_kg: number;
   is_express?: boolean;
   zone_uuid: string;
@@ -30,6 +32,8 @@ export interface UpdateOrderData {
   customer_phone?: string;
   delivery_address?: string;
   pickup_address?: string;
+  pickup_latitude?: number;
+  pickup_longitude?: number;
   package_weight_kg?: number;
   is_express?: boolean;
   zone_uuid?: string;

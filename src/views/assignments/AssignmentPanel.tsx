@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { assignmentService } from '../../services/AssignmentService';
 import { orderService } from '../../services/OrderService';
@@ -9,6 +9,10 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import Badge from '../../components/common/Badge';
+import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
+import CouriersMap from '../../components/assignments/CouriersMap';
+import Select from '../../components/common/Select';
+import Pagination, { type PaginationMeta } from '../../components/common/Pagination';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime } from '../../utils/formatters';
 import { useToastContext } from '../../contexts/ToastContext';
@@ -22,16 +26,35 @@ export default function AssignmentPanel() {
   const [availableCouriers, setAvailableCouriers] = useState<Courier[]>([]);
   const [assignmentCounts, setAssignmentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [pendingPagination, setPendingPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    per_page: 20,
+    total: 0,
+  });
+  const [assignedPagination, setAssignedPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    per_page: 20,
+    total: 0,
+  });
   const [selectedOrder, setSelectedOrder] = useState<string>('');
   const [selectedCourier, setSelectedCourier] = useState<string>('');
   const [assigning, setAssigning] = useState(false);
   const [selectedOrderData, setSelectedOrderData] = useState<Order | null>(null);
   const [showAllCouriers, setShowAllCouriers] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [assignmentToReassign, setAssignmentToReassign] = useState<DeliveryAssignment | null>(null);
+  const [mapFilters, setMapFilters] = useState<{
+    vehicleType: 'moto' | 'voiture' | 'velo' | '';
+    availability: 'all' | 'available' | 'delivering' | 'offline';
+  }>({
+    vehicleType: '',
+    availability: 'all',
+  });
   const { success, error: showError } = useToastContext();
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [pendingPagination.current_page, pendingPagination.per_page, assignedPagination.current_page, assignedPagination.per_page]);
 
   useEffect(() => {
     if (selectedOrder) {
@@ -40,19 +63,38 @@ export default function AssignmentPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrder, showAllCouriers]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // Charger les commandes en attente
-      const ordersResult = await orderService.getAll({ status: 'pending', per_page: 50 });
+      const ordersResult = await orderService.getAll({ 
+        status: 'pending', 
+        page: pendingPagination.current_page,
+        per_page: pendingPagination.per_page 
+      });
       if (ordersResult.data) {
         setPendingOrders(ordersResult.data);
+        if (ordersResult.meta) {
+          setPendingPagination((prev) => ({
+            ...prev,
+            ...ordersResult.meta,
+          }));
+        }
       }
 
       // Charger les commandes attribuées
-      const assignedResult = await assignmentService.getAssignedOrders({ per_page: 50 });
+      const assignedResult = await assignmentService.getAssignedOrders({ 
+        page: assignedPagination.current_page,
+        per_page: assignedPagination.per_page 
+      });
       if (assignedResult.data) {
         setAssignedOrders(assignedResult.data);
+        if (assignedResult.meta) {
+          setAssignedPagination((prev) => ({
+            ...prev,
+            ...assignedResult.meta,
+          }));
+        }
       }
 
       // Charger les livreurs actifs
@@ -71,7 +113,7 @@ export default function AssignmentPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pendingPagination.current_page, pendingPagination.per_page, assignedPagination.current_page, assignedPagination.per_page]);
 
   const loadAvailableCouriers = async () => {
     if (!selectedOrder) return;
@@ -146,7 +188,6 @@ export default function AssignmentPanel() {
   return (
     <div>
       <h1 className={tailwindClasses.pageTitle}>Attributions de livraisons</h1>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card title="Attribuer une commande">
           <div className="space-y-4">
@@ -191,7 +232,7 @@ export default function AssignmentPanel() {
               </div>
             )}
 
-            {selectedOrderData && selectedOrderData.pricing?.vehicle_type && (
+            {/* {selectedOrderData && selectedOrderData.pricing?.vehicle_type && (
               <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded">
                 <input
                   type="checkbox"
@@ -204,7 +245,7 @@ export default function AssignmentPanel() {
                   Afficher tous les livreurs disponibles (ignorer le type de véhicule)
                 </label>
               </div>
-            )}
+            )} */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -213,10 +254,10 @@ export default function AssignmentPanel() {
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {(selectedOrder ? availableCouriers : couriers).map(courier => (
                   <div
-                    key={courier.uuid}
-                    onClick={() => setSelectedCourier(courier.uuid)}
+                    key={courier.id}
+                    onClick={() => setSelectedCourier(courier.id)}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      selectedCourier === courier.uuid
+                      selectedCourier === courier.id
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
@@ -235,15 +276,15 @@ export default function AssignmentPanel() {
                               Actif
                             </span>
                           )}
-                          {assignmentCounts[courier.uuid] !== undefined && (
+                          {assignmentCounts[courier.id] !== undefined && (
                             <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded font-semibold">
-                              {assignmentCounts[courier.uuid]} commande{assignmentCounts[courier.uuid] > 1 ? 's' : ''}
+                              {assignmentCounts[courier.id]} commande{assignmentCounts[courier.id] > 1 ? 's' : ''}
                             </span>
                           )}
                         </div>
-                        {assignmentCounts[courier.uuid] !== undefined && (
+                        {assignmentCounts[courier.id] !== undefined && (
                           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                            Commandes attribuées : {assignmentCounts[courier.uuid] || 0}
+                            Commandes attribuées : {assignmentCounts[courier.id] || 0}
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-400">
@@ -260,8 +301,12 @@ export default function AssignmentPanel() {
                       <div className="ml-4">
                         <input
                           type="radio"
-                          checked={selectedCourier === courier.uuid}
-                          onChange={() => setSelectedCourier(courier.uuid)}
+                          checked={selectedCourier === courier.id}
+                          onChange={() => {
+                            console.log('courier', courier.id);
+                            setSelectedCourier(courier.id);
+
+                          }}
                           className="h-4 w-4 text-blue-600"
                         />
                       </div>
@@ -280,7 +325,7 @@ export default function AssignmentPanel() {
             <Button
               onClick={handleAssign}
               loading={assigning}
-              disabled={!selectedOrder || !selectedCourier}
+              disabled={!selectedCourier}
               variant="primary"
               className="w-full"
             >
@@ -357,6 +402,19 @@ export default function AssignmentPanel() {
                 ))}
               </tbody>
             </table>
+            {!loading && pendingOrders.length > 0 && (
+              <Pagination
+                meta={pendingPagination}
+                onPageChange={(page) => {
+                  setPendingPagination((prev) => ({ ...prev, current_page: page }));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onPerPageChange={(perPage) => {
+                  setPendingPagination((prev) => ({ ...prev, per_page: perPage, current_page: 1 }));
+                }}
+                perPageOptions={[10, 20, 50, 100]}
+              />
+            )}
           </div>
         )}
       </Card>
@@ -404,20 +462,109 @@ export default function AssignmentPanel() {
                       {assignment.assigned_at ? formatDateTime(assignment.assigned_at) : '-'}
                     </td>
                     <td className={tailwindClasses.tableCell}>
-                      <Button
-                        variant="outline"
-                        onClick={() => navigate(`/orders/${assignment.order_uuid}`)}
-                      >
-                        Voir
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate(`/orders/${assignment.order_uuid}`)}
+                        >
+                          Voir
+                        </Button>
+                        {(assignment.assignment_status === 'assigned' || assignment.assignment_status === 'accepted') && (
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setAssignmentToReassign(assignment);
+                              setShowReassignModal(true);
+                            }}
+                          >
+                            Réassigner
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {!loading && assignedOrders.length > 0 && (
+              <Pagination
+                meta={assignedPagination}
+                onPageChange={(page) => {
+                  setAssignedPagination((prev) => ({ ...prev, current_page: page }));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onPerPageChange={(perPage) => {
+                  setAssignedPagination((prev) => ({ ...prev, per_page: perPage, current_page: 1 }));
+                }}
+                perPageOptions={[10, 20, 50, 100]}
+              />
+            )}
           </div>
         )}
       </Card>
+
+      {/* Carte GPS des livreurs */}
+      <Card title="📍 Position GPS des livreurs en temps réel" className="mb-6 mt-6">
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Type de véhicule"
+            value={mapFilters.vehicleType}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, vehicleType: e.target.value as any })
+            }
+            options={[
+              { value: '', label: 'Tous les véhicules' },
+              { value: 'moto', label: 'Moto' },
+              { value: 'voiture', label: 'Voiture' },
+              { value: 'velo', label: 'Vélo' },
+            ]}
+          />
+          <Select
+            label="Disponibilité"
+            value={mapFilters.availability}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, availability: e.target.value as any })
+            }
+            options={[
+              { value: 'all', label: 'Tous' },
+              { value: 'available', label: 'Disponibles' },
+              { value: 'delivering', label: 'En livraison' },
+              { value: 'offline', label: 'Hors ligne' },
+            ]}
+          />
+        </div>
+        <CouriersMap
+          couriers={couriers}
+          assignmentCounts={assignmentCounts}
+          selectedCourierId={selectedCourier}
+          filters={mapFilters}
+          onCourierClick={(courier) => {
+            setSelectedCourier(courier.id);
+          }}
+          autoRefresh={true}
+          refreshInterval={10000}
+          onCouriersUpdate={(updatedCouriers) => {
+            setCouriers(updatedCouriers);
+          }}
+        />
+      </Card>
+
+      {/* Modal de réassignation */}
+      {assignmentToReassign && (
+        <ReassignOrderModal
+          isOpen={showReassignModal}
+          onClose={() => {
+            setShowReassignModal(false);
+            setAssignmentToReassign(null);
+          }}
+          assignment={assignmentToReassign}
+          onReassignSuccess={() => {
+            loadData();
+            setShowReassignModal(false);
+            setAssignmentToReassign(null);
+          }}
+        />
+      )}
     </div>
   );
 }

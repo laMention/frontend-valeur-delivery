@@ -56,13 +56,17 @@ const AddressInput = forwardRef<HTMLTextAreaElement, AddressInputProps>(
       }
 
       try {
-        // Utiliser uniquement l'ancienne API Autocomplete
+        // S'assurer que tous les champs nécessaires sont demandés (geometry inclut location)
         const autocomplete = new window.google.maps.places.Autocomplete(
           autocompleteInputRef.current,
           {
             // types: ['address'],
             componentRestrictions: { country: 'ci' },
-            fields: ['formatted_address', 'geometry', 'address_components'],
+            fields: [
+              'formatted_address',
+              'geometry', // Inclut geometry.location
+              'address_components',
+            ],
           }
         );
 
@@ -72,60 +76,162 @@ const AddressInput = forwardRef<HTMLTextAreaElement, AddressInputProps>(
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
 
-          if (place && place.formatted_address && place.geometry) {
-            const formattedAddress = place.formatted_address;
-            isPlaceSelectedRef.current = true;
-            setAddress(formattedAddress);
+          if (!place) {
+            console.warn('Place non disponible dans place_changed');
+            return;
+          }
 
-            if (autocompleteInputRef.current) {
-              autocompleteInputRef.current.value = formattedAddress;
-            }
+          // Vérifier que l'adresse formatée existe
+          if (!place.formatted_address) {
+            console.warn('Adresse formatée non disponible');
+            return;
+          }
 
-            if (textareaRef.current) {
-              textareaRef.current.value = formattedAddress;
-            }
+          const formattedAddress = place.formatted_address;
+          isPlaceSelectedRef.current = true;
+          setAddress(formattedAddress);
 
-            // Extraire les coordonnées
+          if (autocompleteInputRef.current) {
+            autocompleteInputRef.current.value = formattedAddress;
+          }
+
+          if (textareaRef.current) {
+            textareaRef.current.value = formattedAddress;
+          }
+
+          // Extraire les coordonnées GPS de manière robuste
+          let latitude: number | undefined;
+          let longitude: number | undefined;
+
+          if (place.geometry && place.geometry.location) {
             const location = place.geometry.location;
-            const latitude = location?.lat();
-            const longitude = location?.lng();
 
-            // Extraire la ville et le pays
-            let city = '';
-            let country = '';
+            
 
-            if (place.address_components) {
-              place.address_components.forEach((component: {
-                types?: string[];
-                long_name?: string;
-              }) => {
-                const types = component.types || [];
-                if (types.includes('locality')) {
-                  city = component.long_name || '';
+            // Gérer les différents formats de location (LatLng peut être un objet ou avoir des méthodes)
+            if (typeof location.lat === 'function' && typeof location.lng === 'function') {
+              // Format avec méthodes lat() et lng()
+              latitude = location.lat();
+              longitude = location.lng();
+            } else if (typeof location.lat === 'number' && typeof location.lng === 'number') {
+              // Format avec propriétés directes
+              latitude = location.lat;
+              longitude = location.lng;
+            } else {
+              // Essayer d'accéder aux propriétés directement
+              const latValue = (location as any).lat;
+              const lngValue = (location as any).lng;
+              
+              if (typeof latValue === 'number' && typeof lngValue === 'number') {
+                latitude = latValue;
+                longitude = lngValue;
+              } else if (typeof latValue === 'function' && typeof lngValue === 'function') {
+                latitude = latValue();
+                longitude = lngValue();
+              }
+            }
+
+            // Valider que les coordonnées sont des nombres valides
+            if (latitude !== undefined && longitude !== undefined) {
+              latitude = Number(latitude);
+              longitude = Number(longitude);
+              
+              if (isNaN(latitude) || isNaN(longitude)) {
+                console.warn('Coordonnées GPS invalides:', { latitude, longitude });
+                latitude = undefined;
+                longitude = undefined;
+              } else if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                console.warn('Coordonnées GPS hors limites:', { latitude, longitude });
+                latitude = undefined;
+                longitude = undefined;
+              }
+            }
+          }
+
+          // Si les coordonnées ne sont pas disponibles, essayer un géocodage inverse
+          if ((!latitude || !longitude) && formattedAddress) {
+            console.warn('Coordonnées GPS non disponibles depuis place.geometry.location, tentative de géocodage inverse');
+            
+            // Effectuer un géocodage inverse en fallback
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode(
+              { address: formattedAddress },
+              (results: any[], status: string) => {
+                if (status === 'OK' && results && results.length > 0) {
+                  const result = results[0];
+                  if (result.geometry && result.geometry.location) {
+                    const loc = result.geometry.location;
+                    const lat = typeof loc.lat === 'function' ? loc.lat() : loc.lat;
+                    const lng = typeof loc.lng === 'function' ? loc.lng() : loc.lng;
+                    
+                    if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+                      // Mettre à jour avec les coordonnées obtenues
+                      if (onPlaceSelect) {
+                        onPlaceSelect({
+                          address: formattedAddress,
+                          latitude: lat,
+                          longitude: lng,
+                          city,
+                          country,
+                        });
+                      }
+                      console.log('Coordonnées GPS récupérées via géocodage inverse:', { lat, lng });
+                    }
+                  }
+                } else {
+                  console.error('Échec du géocodage inverse:', status);
                 }
-                if (types.includes('country')) {
-                  country = component.long_name || '';
-                }
-              });
-            }
+              }
+            );
+          }
 
-            // Appeler les callbacks
-            if (onPlaceSelect) {
-              onPlaceSelect({
-                address: formattedAddress,
-                latitude,
-                longitude,
-                city,
-                country,
-              });
-            }
+          // Extraire la ville et le pays
+          let city = '';
+          let country = '';
 
-            if (onChange) {
-              const syntheticEvent = {
-                target: { value: formattedAddress },
-              } as React.ChangeEvent<HTMLTextAreaElement>;
-              onChange(syntheticEvent);
-            }
+          if (place.address_components) {
+            place.address_components.forEach((component: {
+              types?: string[];
+              long_name?: string;
+            }) => {
+              const types = component.types || [];
+              if (types.includes('locality')) {
+                city = component.long_name || '';
+              }
+              if (types.includes('country')) {
+                country = component.long_name || '';
+              }
+            });
+          }
+
+          // Appeler le callback onPlaceSelect avec toutes les informations
+          if (onPlaceSelect) {
+            onPlaceSelect({
+              address: formattedAddress,
+              latitude,
+              longitude,
+              city,
+              country,
+            });
+          }
+
+          // Appeler le callback onChange pour mettre à jour le formulaire
+          if (onChange) {
+            const syntheticEvent = {
+              target: { value: formattedAddress },
+            } as React.ChangeEvent<HTMLTextAreaElement>;
+            onChange(syntheticEvent);
+          }
+
+          // Log pour le débogage
+          if (latitude && longitude) {
+            console.log('Adresse sélectionnée avec coordonnées GPS:', {
+              address: formattedAddress,
+              latitude,
+              longitude,
+            });
+          } else {
+            console.warn('Adresse sélectionnée sans coordonnées GPS:', formattedAddress);
           }
         });
       } catch (error) {
@@ -160,6 +266,7 @@ const AddressInput = forwardRef<HTMLTextAreaElement, AddressInputProps>(
         textareaRef.current.value = e.target.value;
       }
       isPlaceSelectedRef.current = false;
+      console.log('isPlaceSelectedRef', isPlaceSelectedRef.current);
     };
 
     const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {

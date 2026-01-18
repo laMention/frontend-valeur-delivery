@@ -25,8 +25,20 @@ class NotificationService {
     return response.data;
   }
 
-  async getByUser(userUuid: string, params?: { unread_only?: boolean }): Promise<{ data: Notification[] }> {
-    const response = await apiClient.get<{ data: Notification[] }>(`/notifications/user/${userUuid}`, { params });
+  async getByUser(userUuid: string, params?: { unread_only?: boolean; read_status?: 'read' | 'unread'; type?: string; page?: number; per_page?: number }): Promise<{ data: Notification[]; meta?: PaginationMeta }> {
+    const response = await apiClient.get<{ data: Notification[]; meta?: PaginationMeta }>(`/notifications/user/${userUuid}`, { params });
+    return response.data;
+  }
+
+  async getMyNotifications(params?: { read_status?: 'read' | 'unread'; type?: string; page?: number; per_page?: number }): Promise<{ data: Notification[]; meta?: PaginationMeta }> {
+    const response = await apiClient.get<{ data: Notification[]; meta?: PaginationMeta }>('/user/notifications', { params });
+    return response.data;
+  }
+
+  async deleteMultiple(notificationIds: string[]): Promise<{ message: string; deleted: number; failed: number }> {
+    const response = await apiClient.post<{ message: string; deleted: number; failed: number }>('/user/notifications/delete-multiple', {
+      notification_ids: notificationIds,
+    });
     return response.data;
   }
 

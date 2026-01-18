@@ -2,6 +2,7 @@ import { apiClient } from './apiClient';
 
 export interface Courier {
   uuid: string;
+  id: string;
   user_uuid: string;
   vehicle_type: 'moto' | 'voiture' | 'velo';
   is_active: boolean;
@@ -58,7 +59,7 @@ class CourierService {
   }
 
   async getAvailableForZone(zoneUuid?: string, vehicleType?: 'moto' | 'voiture' | 'velo'): Promise<{ data: Courier[] }> {
-    const response = await apiClient.get<{ data: Courier[] }>('/couriers/available-for-zone', {
+    const response = await apiClient.get<{ data: Courier[] }>('/available-for-zone/couriers', {
       params: { zone_uuid: zoneUuid, vehicle_type: vehicleType }
     });
     return response.data;
@@ -89,7 +90,12 @@ class CourierService {
   }
 
   async getActiveCouriers(): Promise<{ data: Courier[] }> {
-    const response = await apiClient.get<{ data: Courier[] }>('/couriers/active');
+    const response = await apiClient.get<{ data: Courier[] }>('/active/couriers');
+    return response.data;
+  }
+
+  async getWithAcceptedOrders(): Promise<{ data: Courier[] }> {
+    const response = await apiClient.get<{ data: Courier[] }>('/with-accepted-orders/couriers');
     return response.data;
   }
 

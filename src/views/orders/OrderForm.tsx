@@ -14,6 +14,10 @@ import { tailwindClasses } from '../../utils/tailwindClasses';
 import type { Partner } from '../../models/Partner';
 import type { Zone } from '../../models/Zone';
 import type { Order, CreateOrderData, UpdateOrderData } from '../../services/OrderService';
+import { usePermissions } from '../../hooks/usePermissions';
+import type { Role } from '../../models/User';
+
+
 
 interface OrderItem {
   product_name: string;
@@ -40,20 +44,7 @@ export default function OrderForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { success, error: showError } = useToastContext();
-  const [formData, setFormData] = useState<CreateOrderData>({
-    order_number: '',
-    partner_id: '',
-    customer_name: '',
-    customer_phone: '',
-    delivery_address: '',
-    pickup_address: '',
-    package_weight_kg: 1,
-    is_express: false,
-    zone_uuid: '',
-    reserved_at: new Date().toISOString().slice(0, 16),
-    total_amount: 0,
-    order_amount: 0,
-  });
+  
   const [items, setItems] = useState<OrderItem[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -67,36 +58,49 @@ export default function OrderForm() {
   }>({});
   const [isPartner, setIsPartner] = useState(false);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
+  const { getUserRoles } = usePermissions();
+  const userRoles = getUserRoles();
+  const { user: currentUser } = useAuth();
 
-  useEffect(() => {
-    loadPartners();
-    loadZones();
-    checkUserRole();
-    if (uuid) {
-      loadOrder();
-    }
-  }, [uuid, user]);
-
-  const checkUserRole = async () => {
-    // Vérifier si l'utilisateur est un partenaire
-    const userRoles = user?.roles || [];
-    const partnerRole = userRoles.find((r: any) => r.name === 'partner' || r.name === 'partenaire');
-    setIsPartner(!!partnerRole);
+  
     
-    // Si partenaire, récupérer le partenaire associé
-    if (partnerRole) {
-      try {
-        // Chercher le partenaire associé à cet utilisateur
-        const partnersList = await partnerService.getAll();
-        const userPartner = partnersList.data?.find((p: Partner) => p.user_id === user?.uuid);
-        if (userPartner) {
-          setFormData(prev => ({ ...prev, partner_id: userPartner.uuid }));
+
+    const checkUserRole = async () => {
+        // Vérifier si l'utilisateur est un partenaire
+        const userRoles = user?.roles || [];
+        const partnerRole = userRoles.find((r: any) => r.name === 'partner' || r.name === 'partenaire');
+        setIsPartner(!!partnerRole);
+
+        console.log('✅ isPartner:', isPartner);
+        
+        // Si partenaire, récupérer le partenaire associé
+        if (partnerRole) {
+            const userPartner = currentUser && isPartner ? currentUser?.partner : undefined;
+            setFormData(prev => ({ ...prev, partner_id: userPartner?.uuid || '' }));  
         }
-      } catch (error) {
-        console.error('Error loading user partner:', error);
-      }
-    }
-  };
+    };
+
+    // console.log(currentUser);
+    console.log(currentUser && isPartner ? currentUser?.partner?.uuid : '');
+
+  const [formData, setFormData] = useState<CreateOrderData>({
+    order_number: '',
+    partner_id: currentUser && isPartner ? currentUser?.partner?.uuid : '',
+    customer_name: '',
+    customer_phone: '',
+    delivery_address: '',
+    pickup_address: '',
+    pickup_latitude: undefined,
+    pickup_longitude: undefined,
+    package_weight_kg: 1,
+    is_express: false,
+    zone_uuid: '',
+    reserved_at: new Date().toISOString().slice(0, 16),
+    total_amount: 0,
+    order_amount: 0,
+  });
+
+   
 
   const loadPartners = async () => {
     try {
@@ -133,6 +137,8 @@ export default function OrderForm() {
           customer_phone: order.customer_phone,
           delivery_address: order.delivery_address,
           pickup_address: order.pickup_address || '',
+          pickup_latitude: (order as any).pickup_location?.latitude,
+          pickup_longitude: (order as any).pickup_location?.longitude,
           package_weight_kg: order.package_weight_kg || 1,
           is_express: order.is_express || false,
           zone_uuid: order.zone_uuid,
@@ -168,52 +174,134 @@ export default function OrderForm() {
 
   const handleUseCurrentLocation = async () => {
     setIsLoadingGPS(true);
+    setError('');
+    
     try {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
+      // Vérifier que le navigateur supporte la géolocalisation
+      if (!navigator.geolocation) {
+        const errorMsg = 'La géolocalisation n\'est pas supportée par votre navigateur. Veuillez saisir l\'adresse manuellement.';
+        setError(errorMsg);
+        showError(errorMsg);
+        setIsLoadingGPS(false);
+        return;
+      }
+
+      // Demander l'autorisation et récupérer la position
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
             const { latitude, longitude } = position.coords;
             
-            // Utiliser Google Geocoding API pour convertir en adresse
+            // Vérifier que les coordonnées sont valides
+            if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+              throw new Error('Coordonnées GPS invalides');
+            }
+
+            // Utiliser Google Geocoding API pour convertir en adresse (reverse geocoding)
+            const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+            
+            if (!apiKey) {
+              // Si pas d'API key, utiliser les coordonnées directement
+              setFormData(prev => ({ 
+                ...prev, 
+                pickup_address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                pickup_latitude: latitude,
+                pickup_longitude: longitude,
+              }));
+              setIsLoadingGPS(false);
+              return;
+            }
+
             try {
-              const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
               const response = await fetch(
                 `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}&language=fr&region=ci`
               );
+              
+              if (!response.ok) {
+                throw new Error('Erreur lors du géocodage inverse');
+              }
+
               const data = await response.json();
               
-              if (data.results && data.results.length > 0) {
+              if (data.status === 'OK' && data.results && data.results.length > 0) {
+                // Utiliser la première adresse trouvée
                 const address = data.results[0].formatted_address;
-                setFormData(prev => ({ ...prev, pickup_address: address }));
-              } else {
                 setFormData(prev => ({ 
                   ...prev, 
-                  pickup_address: `${latitude}, ${longitude}` 
+                  pickup_address: address,
+                  pickup_latitude: latitude,
+                  pickup_longitude: longitude,
                 }));
+                success('Position actuelle récupérée avec succès');
+              } else if (data.status === 'ZERO_RESULTS') {
+                // Aucune adresse trouvée, utiliser les coordonnées
+                setFormData(prev => ({ 
+                  ...prev, 
+                  pickup_address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                  pickup_latitude: latitude,
+                  pickup_longitude: longitude,
+                }));
+                showError('Aucune adresse trouvée pour cette position. Les coordonnées GPS ont été enregistrées.');
+              } else {
+                // Erreur de l'API Google
+                throw new Error(data.error_message || 'Erreur lors du géocodage inverse');
               }
-            } catch (error) {
-              // Fallback : utiliser les coordonnées
+            } catch (geocodeError) {
+              // En cas d'erreur de géocodage, utiliser quand même les coordonnées
+              console.warn('Erreur de géocodage inverse, utilisation des coordonnées:', geocodeError);
               setFormData(prev => ({ 
                 ...prev, 
-                pickup_address: `${latitude}, ${longitude}` 
+                pickup_address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                pickup_latitude: latitude,
+                pickup_longitude: longitude,
               }));
+              showError('Impossible de convertir la position en adresse. Les coordonnées GPS ont été enregistrées.');
             }
             
             setIsLoadingGPS(false);
-          },
-          (error) => {
-            console.error('Erreur GPS:', error);
-            setError('Impossible d\'obtenir votre position. Veuillez saisir l\'adresse manuellement.');
+          } catch (error) {
+            console.error('Erreur lors du traitement de la position:', error);
+            const errorMsg = 'Erreur lors du traitement de votre position. Veuillez saisir l\'adresse manuellement.';
+            setError(errorMsg);
+            showError(errorMsg);
             setIsLoadingGPS(false);
           }
-        );
-      } else {
-        setError('La géolocalisation n\'est pas supportée par votre navigateur.');
-        setIsLoadingGPS(false);
-      }
+        },
+        (error) => {
+          // Gestion des erreurs de géolocalisation
+          let errorMsg = 'Impossible de récupérer votre position actuelle. Veuillez saisir l\'adresse manuellement.';
+          
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMsg = 'Permission de géolocalisation refusée. Veuillez autoriser l\'accès à votre position ou saisir l\'adresse manuellement.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMsg = 'Position indisponible. Veuillez vérifier que votre GPS est activé ou saisir l\'adresse manuellement.';
+              break;
+            case error.TIMEOUT:
+              errorMsg = 'Délai d\'attente dépassé pour la récupération de la position. Veuillez réessayer ou saisir l\'adresse manuellement.';
+              break;
+            default:
+              errorMsg = 'Impossible de récupérer votre position actuelle. Veuillez saisir l\'adresse manuellement.';
+          }
+          
+          console.error('Erreur GPS:', error);
+          setError(errorMsg);
+          showError(errorMsg);
+          setIsLoadingGPS(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
     } catch (error) {
+      console.error('Erreur lors de la récupération de la position:', error);
+      const errorMsg = 'Erreur lors de la récupération de votre position. Veuillez saisir l\'adresse manuellement.';
+      setError(errorMsg);
+      showError(errorMsg);
       setIsLoadingGPS(false);
-      setError('Erreur lors de la récupération de la position.');
     }
   };
 
@@ -221,8 +309,16 @@ export default function OrderForm() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
+    // console.log('✅ formData:', formData);
     try {
+      // Validation : vérifier que pickup_address a des coordonnées GPS
+      if (formData.pickup_address && (!formData.pickup_latitude || !formData.pickup_longitude)) {
+        setError('Veuillez renseigner l\'adresse de récupération du colis en sélectionnant une adresse depuis les suggestions');
+        showError('Veuillez renseigner l\'adresse de récupération du colis en sélectionnant une adresse depuis les suggestions');
+        setLoading(false);
+        return;
+      }
+
       // Utiliser le montant total saisi par l'utilisateur, ou calculer depuis les items
       const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const finalTotalAmount = formData.total_amount > 0 ? formData.total_amount : itemsTotal;
@@ -270,6 +366,35 @@ export default function OrderForm() {
     setItems(newItems);
   };
 
+  const handlePickupAddressChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setFormData(prev => ({ ...prev, pickup_address: e.target.value }));
+    // console.log('✅ pickup_address:', e.target.value);
+    // Récupérer les coordonnées GPS de l'adresse
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${e.target.value}&key=${apiKey}`);
+    const data = await response.json();
+    // console.log('✅ data:', data);
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const latitude = data.results[0].geometry.location.lat;
+      const longitude = data.results[0].geometry.location.lng;
+      setFormData(prev => ({ ...prev, pickup_latitude: latitude, pickup_longitude: longitude }));
+    }
+  };
+
+  const handlePickupAddressSelect = (place: any) => {
+    // console.log('✅ place:', place);
+    setFormData(prev => ({ ...prev, pickup_address: place.address, pickup_latitude: place.latitude || undefined, pickup_longitude: place.longitude || undefined }));
+  };
+
+  useEffect(() => {
+    loadPartners();
+    loadZones();
+    checkUserRole();
+    if (uuid) {
+      loadOrder();
+    }
+  }, [uuid, user]);
+
   const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const deliveryPrice = Number(calculations.delivery_price) || 0;
   const totalAmount = Number(itemsTotal) + Number(deliveryPrice);
@@ -308,18 +433,43 @@ export default function OrderForm() {
                 placeholder="Ex: CMD-2025-001"
                 disabled={!!uuid}
               />
-
-              <Select
-                label="Vendeur (Partenaire) *"
-                value={formData.partner_id}
-                onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
-                options={[
-                  { value: '', label: 'Sélectionner un partenaire' },
-                  ...partners.map(p => ({ value: p.uuid, label: p.company_name }))
-                ]}
-                required
-                disabled={isPartner}
-              />
+              {/* Si l'utilisateur n'est pas un partenaire, afficher le select pour sélectionner un partenaire */}
+              {!userRoles.some((r: any) => r.name === 'partner' || r.name === 'partenaire') && (
+                <Select
+                  label="Vendeur (Partenaire) *"
+                  value={formData.partner_id}
+                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  options={[
+                    { value: '', label: 'Sélectionner un partenaire' },
+                    ...partners.map(p => ({ value: p.uuid, label: p.company_name }))
+                  ]}
+                  required
+                />
+              )}
+              {/* Si l'utilisateur est un partenaire, afficher le nom de l'entreprise */}
+              {userRoles.some((r: Role) => r.name === 'partner' || r.name === 'partenaire') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Vendeur ({currentUser?.partner?.company_name})
+                  </label>
+                  <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600">
+                  
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    
+                      {currentUser?.partner?.company_name || 'Votre entreprise'}
+                    </p>
+                  </div>
+                  <Input
+                      type='hidden'
+                      name='partner_id'
+                      value={isPartner ? currentUser?.partner?.uuid || '' : ''}
+                      onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                    />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Les commandes créées vous seront automatiquement attribuées
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -334,32 +484,53 @@ export default function OrderForm() {
                   { value: '', label: 'Sélectionner une zone' },
                   ...zones.map(z => ({ value: z.uuid, label: z.name }))
                 ]}
-                required
+                
               />
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Adresse de récupération du colis
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    value={formData.pickup_address}
-                    onChange={(e) => setFormData({ ...formData, pickup_address: e.target.value })}
-                    placeholder="Adresse de récupération (optionnel)"
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleUseCurrentLocation}
-                    disabled={isLoadingGPS}
-                  >
-                    {isLoadingGPS ? 'Chargement...' : '📍 Utiliser ma position'}
-                  </Button>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <AddressInput
+                      label="Adresse de récupération du colis *"
+                      value={formData.pickup_address}
+                      onChange={(e) => handlePickupAddressChange(e as React.ChangeEvent<HTMLTextAreaElement>)}
+                        onPlaceSelect={(place) => handlePickupAddressSelect(place)}
+                      placeholder="Commencez à taper une adresse..."
+                      required
+                    />
+                  </div>
+                  <div className="pt-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleUseCurrentLocation}
+                      disabled={isLoadingGPS}
+                      className="whitespace-nowrap"
+                    >
+                      {isLoadingGPS ? (
+                        <>
+                          <span className="animate-spin mr-2">⏳</span>
+                          Chargement...
+                        </>
+                      ) : (
+                        <>
+                          <span className="mr-2">📍</span>
+                          Utiliser ma position
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Si non renseignée, l'adresse du partenaire ou l'entrepôt sera utilisée
-                </p>
+                {formData.pickup_latitude && formData.pickup_longitude && (
+                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                    ✓ Coordonnées GPS: {formData.pickup_latitude.toFixed(6)}, {formData.pickup_longitude.toFixed(6)}
+                  </p>
+                )}
+                {!formData.pickup_latitude && formData.pickup_address && (
+                  <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                    ⚠ Veuillez sélectionner une adresse depuis les suggestions pour obtenir les coordonnées GPS
+                  </p>
+                )}
               </div>
 
               <Input

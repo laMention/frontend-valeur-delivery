@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { orderController } from '../../controllers/OrderController';
 import { orderService } from '../../services/OrderService';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -11,6 +11,8 @@ import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
 import ConfirmModal from '../../components/common/ConfirmModal';
 import ImportOrdersModal from '../../components/orders/ImportOrdersModal';
+import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
+import Pagination, { type PaginationMeta } from '../../components/common/Pagination';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime, formatCurrency } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
@@ -25,7 +27,14 @@ export default function OrderList() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [orderToReassign, setOrderToReassign] = useState<Order | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    per_page: 20,
+    total: 0,
+  });
   const [filters, setFilters] = useState({
     status: '',
     search: '',
@@ -35,18 +44,33 @@ export default function OrderList() {
     sort_by: 'newest',
   });
 
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await orderController.getAll({
+        ...filters,
+        page: pagination.current_page,
+        per_page: pagination.per_page,
+      });
+      if (result.success) {
+        setOrders(result.data || []);
+        if (result.meta) {
+          setPagination((prev) => ({
+            ...prev,
+            ...result.meta,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, pagination.current_page, pagination.per_page]);
+
   useEffect(() => {
     loadOrders();
-  }, [filters]);
-
-  const loadOrders = async () => {
-    setLoading(true);
-    const result = await orderController.getAll(filters);
-    if (result.success) {
-      setOrders(result.data || []);
-    }
-    setLoading(false);
-  };
+  }, [loadOrders]);
 
   const resetFilters = () => {
     setFilters({
@@ -57,6 +81,17 @@ export default function OrderList() {
       end_date: '',
       sort_by: 'newest',
     });
+    setPagination((prev) => ({ ...prev, current_page: 1 }));
+  };
+
+  const handlePageChange = (page: number) => {
+    setPagination((prev) => ({ ...prev, current_page: page }));
+    // Scroll to top when page changes
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePerPageChange = (perPage: number) => {
+    setPagination((prev) => ({ ...prev, per_page: perPage, current_page: 1 }));
   };
 
   const handleDeleteClick = (order: Order) => {
@@ -86,6 +121,20 @@ export default function OrderList() {
 
   const canEditOrder = () => isSuperAdmin() || canUpdate('order');
   const canDeleteOrder = () => isSuperAdmin() || canDelete('order');
+  const canReassignOrder = (order: Order) => {
+    // Peut réassigner si la commande est assignée mais non livrée/annulée
+    return (isSuperAdmin() || canUpdate('order')) && 
+           (order.status === 'assigned' || order.status === 'picked' || order.status === 'delivering');
+  };
+
+  const handleReassignClick = (order: Order) => {
+    setOrderToReassign(order);
+    setShowReassignModal(true);
+  };
+
+  const handleReassignSuccess = () => {
+    loadOrders();
+  };
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
     setExporting(true);
@@ -250,6 +299,14 @@ export default function OrderList() {
                         >
                           Voir
                         </Button>
+                        {canReassignOrder(order) && (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleReassignClick(order)}
+                          >
+                            Réassigner
+                          </Button>
+                        )}
                         {canEditOrder() && (
                           <Button
                             variant="outline"
@@ -273,6 +330,14 @@ export default function OrderList() {
                 ))}
               </tbody>
             </table>
+            {!loading && (
+              <Pagination
+                meta={pagination}
+                onPageChange={handlePageChange}
+                onPerPageChange={handlePerPageChange}
+                perPageOptions={[10, 20, 50, 100]}
+              />
+            )}
           </div>
         )}
       </Card>
@@ -297,6 +362,18 @@ export default function OrderList() {
         onClose={() => setShowImportModal(false)}
         onSuccess={handleImportSuccess}
       />
+
+      {orderToReassign && (
+        <ReassignOrderModal
+          isOpen={showReassignModal}
+          onClose={() => {
+            setShowReassignModal(false);
+            setOrderToReassign(null);
+          }}
+          order={orderToReassign}
+          onReassignSuccess={handleReassignSuccess}
+        />
+      )}
     </div>
   );
 }
