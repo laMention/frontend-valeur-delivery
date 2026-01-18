@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { assignmentService } from '../../services/AssignmentService';
 import { orderService } from '../../services/OrderService';
@@ -12,6 +12,7 @@ import Badge from '../../components/common/Badge';
 import ReassignOrderModal from '../../components/orders/ReassignOrderModal';
 import CouriersMap from '../../components/assignments/CouriersMap';
 import Select from '../../components/common/Select';
+import Pagination, { type PaginationMeta } from '../../components/common/Pagination';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatDateTime } from '../../utils/formatters';
 import { useToastContext } from '../../contexts/ToastContext';
@@ -25,6 +26,16 @@ export default function AssignmentPanel() {
   const [availableCouriers, setAvailableCouriers] = useState<Courier[]>([]);
   const [assignmentCounts, setAssignmentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [pendingPagination, setPendingPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    per_page: 20,
+    total: 0,
+  });
+  const [assignedPagination, setAssignedPagination] = useState<PaginationMeta>({
+    current_page: 1,
+    per_page: 20,
+    total: 0,
+  });
   const [selectedOrder, setSelectedOrder] = useState<string>('');
   const [selectedCourier, setSelectedCourier] = useState<string>('');
   const [assigning, setAssigning] = useState(false);
@@ -43,7 +54,7 @@ export default function AssignmentPanel() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [pendingPagination.current_page, pendingPagination.per_page, assignedPagination.current_page, assignedPagination.per_page]);
 
   useEffect(() => {
     if (selectedOrder) {
@@ -52,19 +63,38 @@ export default function AssignmentPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrder, showAllCouriers]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // Charger les commandes en attente
-      const ordersResult = await orderService.getAll({ status: 'pending', per_page: 50 });
+      const ordersResult = await orderService.getAll({ 
+        status: 'pending', 
+        page: pendingPagination.current_page,
+        per_page: pendingPagination.per_page 
+      });
       if (ordersResult.data) {
         setPendingOrders(ordersResult.data);
+        if (ordersResult.meta) {
+          setPendingPagination((prev) => ({
+            ...prev,
+            ...ordersResult.meta,
+          }));
+        }
       }
 
       // Charger les commandes attribuées
-      const assignedResult = await assignmentService.getAssignedOrders({ per_page: 50 });
+      const assignedResult = await assignmentService.getAssignedOrders({ 
+        page: assignedPagination.current_page,
+        per_page: assignedPagination.per_page 
+      });
       if (assignedResult.data) {
         setAssignedOrders(assignedResult.data);
+        if (assignedResult.meta) {
+          setAssignedPagination((prev) => ({
+            ...prev,
+            ...assignedResult.meta,
+          }));
+        }
       }
 
       // Charger les livreurs actifs
@@ -83,7 +113,7 @@ export default function AssignmentPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pendingPagination.current_page, pendingPagination.per_page, assignedPagination.current_page, assignedPagination.per_page]);
 
   const loadAvailableCouriers = async () => {
     if (!selectedOrder) return;
@@ -158,53 +188,6 @@ export default function AssignmentPanel() {
   return (
     <div>
       <h1 className={tailwindClasses.pageTitle}>Attributions de livraisons</h1>
-
-      {/* Carte GPS des livreurs */}
-      <Card title="📍 Position GPS des livreurs en temps réel" className="mb-6">
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select
-            label="Type de véhicule"
-            value={mapFilters.vehicleType}
-            onChange={(e) =>
-              setMapFilters({ ...mapFilters, vehicleType: e.target.value as any })
-            }
-            options={[
-              { value: '', label: 'Tous les véhicules' },
-              { value: 'moto', label: 'Moto' },
-              { value: 'voiture', label: 'Voiture' },
-              { value: 'velo', label: 'Vélo' },
-            ]}
-          />
-          <Select
-            label="Disponibilité"
-            value={mapFilters.availability}
-            onChange={(e) =>
-              setMapFilters({ ...mapFilters, availability: e.target.value as any })
-            }
-            options={[
-              { value: 'all', label: 'Tous' },
-              { value: 'available', label: 'Disponibles' },
-              { value: 'delivering', label: 'En livraison' },
-              { value: 'offline', label: 'Hors ligne' },
-            ]}
-          />
-        </div>
-        <CouriersMap
-          couriers={couriers}
-          assignmentCounts={assignmentCounts}
-          selectedCourierId={selectedCourier}
-          filters={mapFilters}
-          onCourierClick={(courier) => {
-            setSelectedCourier(courier.id);
-          }}
-          autoRefresh={true}
-          refreshInterval={10000}
-          onCouriersUpdate={(updatedCouriers) => {
-            setCouriers(updatedCouriers);
-          }}
-        />
-      </Card>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card title="Attribuer une commande">
           <div className="space-y-4">
@@ -419,6 +402,19 @@ export default function AssignmentPanel() {
                 ))}
               </tbody>
             </table>
+            {!loading && pendingOrders.length > 0 && (
+              <Pagination
+                meta={pendingPagination}
+                onPageChange={(page) => {
+                  setPendingPagination((prev) => ({ ...prev, current_page: page }));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onPerPageChange={(perPage) => {
+                  setPendingPagination((prev) => ({ ...prev, per_page: perPage, current_page: 1 }));
+                }}
+                perPageOptions={[10, 20, 50, 100]}
+              />
+            )}
           </div>
         )}
       </Card>
@@ -490,8 +486,67 @@ export default function AssignmentPanel() {
                 ))}
               </tbody>
             </table>
+            {!loading && assignedOrders.length > 0 && (
+              <Pagination
+                meta={assignedPagination}
+                onPageChange={(page) => {
+                  setAssignedPagination((prev) => ({ ...prev, current_page: page }));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onPerPageChange={(perPage) => {
+                  setAssignedPagination((prev) => ({ ...prev, per_page: perPage, current_page: 1 }));
+                }}
+                perPageOptions={[10, 20, 50, 100]}
+              />
+            )}
           </div>
         )}
+      </Card>
+
+      {/* Carte GPS des livreurs */}
+      <Card title="📍 Position GPS des livreurs en temps réel" className="mb-6 mt-6">
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Type de véhicule"
+            value={mapFilters.vehicleType}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, vehicleType: e.target.value as any })
+            }
+            options={[
+              { value: '', label: 'Tous les véhicules' },
+              { value: 'moto', label: 'Moto' },
+              { value: 'voiture', label: 'Voiture' },
+              { value: 'velo', label: 'Vélo' },
+            ]}
+          />
+          <Select
+            label="Disponibilité"
+            value={mapFilters.availability}
+            onChange={(e) =>
+              setMapFilters({ ...mapFilters, availability: e.target.value as any })
+            }
+            options={[
+              { value: 'all', label: 'Tous' },
+              { value: 'available', label: 'Disponibles' },
+              { value: 'delivering', label: 'En livraison' },
+              { value: 'offline', label: 'Hors ligne' },
+            ]}
+          />
+        </div>
+        <CouriersMap
+          couriers={couriers}
+          assignmentCounts={assignmentCounts}
+          selectedCourierId={selectedCourier}
+          filters={mapFilters}
+          onCourierClick={(courier) => {
+            setSelectedCourier(courier.id);
+          }}
+          autoRefresh={true}
+          refreshInterval={10000}
+          onCouriersUpdate={(updatedCouriers) => {
+            setCouriers(updatedCouriers);
+          }}
+        />
       </Card>
 
       {/* Modal de réassignation */}

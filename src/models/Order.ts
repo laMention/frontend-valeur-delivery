@@ -6,6 +6,10 @@ export interface Order {
   customer_phone: string;
   delivery_address: string;
   pickup_address?: string;
+  pickup_location?: {
+    latitude: number;
+    longitude: number;
+  };
   package_weight_kg?: number;
   is_express?: boolean;
   zone_uuid: string;
