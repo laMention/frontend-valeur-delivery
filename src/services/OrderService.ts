@@ -10,6 +10,8 @@ export interface CreateOrderData {
   customer_name: string;
   customer_phone: string;
   delivery_address: string;
+  delivery_latitude?: number;
+  delivery_longitude?: number;
   pickup_address: string;
   pickup_latitude?: number;
   pickup_longitude?: number;
@@ -31,6 +33,8 @@ export interface UpdateOrderData {
   customer_name?: string;
   customer_phone?: string;
   delivery_address?: string;
+  delivery_latitude?: number;
+  delivery_longitude?: number;
   pickup_address?: string;
   pickup_latitude?: number;
   pickup_longitude?: number;

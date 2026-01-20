@@ -89,6 +89,8 @@ export default function OrderForm() {
     customer_name: '',
     customer_phone: '',
     delivery_address: '',
+    delivery_latitude: undefined,
+    delivery_longitude: undefined,
     pickup_address: '',
     pickup_latitude: undefined,
     pickup_longitude: undefined,
@@ -135,10 +137,12 @@ export default function OrderForm() {
           partner_id: order.partner_id,
           customer_name: order.customer_name,
           customer_phone: order.customer_phone,
-          delivery_address: order.delivery_address,
+          delivery_address: order.delivery_address || '',
+          delivery_latitude: order.delivery_location?.latitude || undefined,
+          delivery_longitude: order.delivery_location?.longitude || undefined,
           pickup_address: order.pickup_address || '',
-          pickup_latitude: (order as any).pickup_location?.latitude,
-          pickup_longitude: (order as any).pickup_location?.longitude,
+          pickup_latitude: order.pickup_location?.latitude || undefined,
+          pickup_longitude: order.pickup_location?.longitude || undefined,
           package_weight_kg: order.package_weight_kg || 1,
           is_express: order.is_express || false,
           zone_uuid: order.zone_uuid,
@@ -311,10 +315,17 @@ export default function OrderForm() {
     setLoading(true);
     // console.log('✅ formData:', formData);
     try {
-      // Validation : vérifier que pickup_address a des coordonnées GPS
+      // vérifier que pickup_address a des coordonnées GPS
       if (formData.pickup_address && (!formData.pickup_latitude || !formData.pickup_longitude)) {
         setError('Veuillez renseigner l\'adresse de récupération du colis en sélectionnant une adresse depuis les suggestions');
         showError('Veuillez renseigner l\'adresse de récupération du colis en sélectionnant une adresse depuis les suggestions');
+        setLoading(false);
+        return;
+      }
+      // vérifier que delivery_address a des coordonnées GPS
+      if (formData.delivery_address && (!formData.delivery_latitude || !formData.delivery_longitude)) {
+        setError('Veuillez renseigner l\'adresse de livraison en sélectionnant une adresse depuis les suggestions');
+        showError('Veuillez renseigner l\'adresse de livraison en sélectionnant une adresse depuis les suggestions');
         setLoading(false);
         return;
       }
@@ -384,6 +395,23 @@ export default function OrderForm() {
   const handlePickupAddressSelect = (place: any) => {
     // console.log('✅ place:', place);
     setFormData(prev => ({ ...prev, pickup_address: place.address, pickup_latitude: place.latitude || undefined, pickup_longitude: place.longitude || undefined }));
+  };
+  const handleDeliveryAddressChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setFormData(prev => ({ ...prev, delivery_address: e.target.value }));
+    // console.log('✅ delivery_address:', e.target.value);
+    // Récupérer les coordonnées GPS de l'adresse
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${e.target.value}&key=${apiKey}`);
+    const data = await response.json();
+    // console.log('✅ data:', data.results[0].geometry.location);
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const latitude = data.results[0].geometry.location.lat;
+      const longitude = data.results[0].geometry.location.lng;
+      setFormData(prev => ({ ...prev, delivery_latitude: latitude, delivery_longitude: longitude }));
+    }
+  };
+  const handleDeliveryAddressSelect = (place: any) => {
+    setFormData(prev => ({ ...prev, delivery_address: place.address, delivery_latitude: place.latitude || undefined, delivery_longitude: place.longitude || undefined }));
   };
 
   useEffect(() => {
@@ -523,7 +551,7 @@ export default function OrderForm() {
                 </div>
                 {formData.pickup_latitude && formData.pickup_longitude && (
                   <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                    ✓ Coordonnées GPS: {formData.pickup_latitude.toFixed(6)}, {formData.pickup_longitude.toFixed(6)}
+                    ✓ Coordonnées GPS: {formData.pickup_latitude.toFixed(6)}, {formData.pickup_longitude.toFixed(6)} - Adresse de récupération: {formData.pickup_address}
                   </p>
                 )}
                 {!formData.pickup_latitude && formData.pickup_address && (
@@ -566,13 +594,22 @@ export default function OrderForm() {
               <AddressInput
                 label="Adresse de livraison *"
                 value={formData.delivery_address}
-                onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
+                // onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })}
+                onChange={(e) => handleDeliveryAddressChange(e as React.ChangeEvent<HTMLTextAreaElement>)}
                 required
-                onPlaceSelect={(place) => {
-                  setFormData({ ...formData, delivery_address: place.address });
-                }}
+                onPlaceSelect={(place) => handleDeliveryAddressSelect(place)}
               />
             </div>
+            {formData.delivery_latitude && formData.delivery_longitude && (
+              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                ✓ Coordonnées GPS: {formData.delivery_latitude.toFixed(6)}, {formData.delivery_longitude.toFixed(6)} - Adresse de livraison: {formData.delivery_address}
+              </p>
+            )}
+            {!formData.delivery_latitude && formData.delivery_address && (
+              <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                ⚠ Veuillez sélectionner une adresse depuis les suggestions pour obtenir les coordonnées GPS
+              </p>
+            )}
           </Card>
 
           {/* Colis */}
@@ -580,7 +617,7 @@ export default function OrderForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <Select
-                  label="Poids du colis (kg) *"
+                  label="Poids du colis (kg) "
                   value={formData.package_weight_kg.toString()}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -593,7 +630,7 @@ export default function OrderForm() {
                     ...WEIGHT_OPTIONS.map(w => ({ value: w.value.toString(), label: w.label })),
                     { value: 'custom', label: 'Autre (saisie manuelle)' }
                   ]}
-                  required
+                  
                 />
               </div>
 

@@ -4,7 +4,11 @@ export interface Order {
   partner_id: string;
   customer_name: string;
   customer_phone: string;
-  delivery_address: string;
+  delivery_address?: string;
+  delivery_location?: {
+    latitude: number;
+    longitude: number;
+  };
   pickup_address?: string;
   pickup_location?: {
     latitude: number;
