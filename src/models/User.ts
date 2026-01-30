@@ -8,6 +8,7 @@ export interface User {
   phone?: string;
   is_active: boolean;
   roles?: Role[];
+  permissions?: Permission[];
   partner?: Partner;
   courier?: Courier;
   created_at: string;
