@@ -35,6 +35,9 @@ import RoleList from '../views/roles/RoleList';
 import RoleForm from '../views/roles/RoleForm';
 import ZoneList from '../views/zones/ZoneList';
 import ZoneForm from '../views/zones/ZoneForm';
+import IntegrationView from '../views/integrations/IntegrationView';
+import IntegrationsList from '../views/integrations/IntegrationsList';
+import PartnerTrackingView from '../views/partner/PartnerTrackingView';
 
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -230,6 +233,14 @@ export default function AppRoutes() {
           }
         />
         <Route
+          path="/partner/tracking"
+          element={
+            <ProtectedRoute requiredPage="/partner/tracking">
+              <PartnerTrackingView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/routes"
           element={
             <ProtectedRoute requiredPage="/routes">
@@ -354,6 +365,22 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute requiredPage="/zones">
               <ZoneForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/integrations"
+          element={
+            <ProtectedRoute requiredPage="/admin/integrations">
+              <IntegrationsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/integrations"
+          element={
+            <ProtectedRoute requiredPage="/integrations">
+              <IntegrationView />
             </ProtectedRoute>
           }
         />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Icon from '@mdi/react';
 import { mdiChevronLeft, mdiChevronRight } from '@mdi/js';
@@ -12,37 +12,59 @@ interface MenuItem {
   path: string;
   icon: string;
   roles?: string[];
+  permission?: string;
 }
 
-const menuItems: MenuItem[] = [
-  { name: 'Tableau de bord', path: '/', icon: '📊' },
-  { name: 'Commandes', path: '/orders', icon: '📦', roles: ['admin','super_admin', 'partner'] },
-  { name: 'Utilisateurs', path: '/users', icon: '👥', roles: ['admin','super_admin'] },
-  { name: 'Partenaires', path: '/partners', icon: '🏢', roles: ['admin','super_admin'] },
-  { name: 'Livreurs', path: '/couriers', icon: '🚴', roles: ['admin','super_admin'] },
-  { name: 'Attributions', path: '/assignments', icon: '📋', roles: ['admin','super_admin'] },
-  { name: 'Réconciliation', path: '/reconciliation', icon: '✅', roles: ['admin','super_admin'] },
-  // { name: 'Tarification', path: '/pricing', icon: '💰', roles: ['admin','super_admin'] }, // Désactivé - Calcul automatique dans les commandes
-  { name: 'Grille Tarifaire', path: '/pricing-rules', icon: '📋', roles: ['admin','super_admin'] },
-  { name: 'Zones de livraison', path: '/zones', icon: '🗺️', roles: ['admin','super_admin'] },
-  { name: 'Étiquettes', path: '/labels', icon: '🏷️', roles: ['admin', 'partner','super_admin'] },
-  { name: 'Itinéraires', path: '/routes', icon: '🗺️', roles: ['admin', 'courier','super_admin'] },
-  { name: 'Audit / Activités', path: '/audit', icon: '📋', roles: ['admin', 'super_admin'] },
-  { name: 'Rôles', path: '/roles', icon: '👤', roles: ['admin', 'super_admin'] },
-  { name: 'Permissions', path: '/permissions', icon: '🔐', roles: ['admin', 'super_admin'] },
-  { name: 'Reporting', path: '/reporting', icon: '📈', roles: ['admin','super_admin'] },
-];
+
 
 export default function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const { hasAnyRole } = usePermissions();
+  const { hasAnyRole, hasPermission, isSuperAdmin, isPartner } = usePermissions();
   const { theme } = useTheme();
   const { isCollapsed, toggleSidebar } = useSidebar();
+  
+  const menuItems = useMemo(() => {
+    return [
+      { name: 'Tableau de bord', path: '/', icon: '📊' },
+      { name: 'Commandes', path: '/orders', icon: '📦', roles: ['admin','super_admin', 'partner'] },
+      { name: 'Suivi des livraisons', path: '/partner/tracking', icon: '📍', permission: 'partner.tracking.view' },
+      { name: 'Utilisateurs', path: '/users', icon: '👥', roles: ['admin','super_admin'] },
+      { name: 'Partenaires', path: '/partners', icon: '🏢', roles: ['admin','super_admin'] },
+      { name: 'Livreurs', path: '/couriers', icon: '🚴', roles: ['admin','super_admin'] },
+      { name: 'Attributions', path: '/assignments', icon: '📋', roles: ['admin','super_admin'] },
+      { name: 'Réconciliation', path: '/reconciliation', icon: '✅', roles: ['admin','super_admin'] },
+      // { name: 'Tarification', path: '/pricing', icon: '💰', roles: ['admin','super_admin'] }, // Désactivé - Calcul automatique dans les commandes
+      { name: 'Grille Tarifaire', path: '/pricing-rules', icon: '📋', roles: ['admin','super_admin'] },
+      { name: 'Zones de livraison', path: '/zones', icon: '🗺️', roles: ['admin','super_admin'] },
+      { name: 'Étiquettes', path: '/labels', icon: '🏷️', roles: ['admin', 'partner','super_admin'] },
+      { name: 'Itinéraires', path: '/routes', icon: '🗺️', roles: ['admin', 'courier','super_admin'] },
+      { name: 'Audit / Activités', path: '/audit', icon: '📋', roles: ['admin', 'super_admin'] },
+      { name: 'Rôles', path: '/roles', icon: '👤', roles: ['admin', 'super_admin'] },
+      { name: 'Permissions', path: '/permissions', icon: '🔐', roles: ['admin', 'super_admin'] },
+      { name: 'Reporting', path: '/reporting', icon: '📈', roles: ['admin','super_admin'] },
+      // { name: 'Intégrations (Admin)', path: '/admin/integrations', icon: '🔌', permission: 'integrations.view_all' },
+      // Si l'utilisateur n'est pas partenaire, on redirige vers la page liste des integrations sinon vers la page pour generer une clé API
+      { name: 'Intégration', path: !isPartner() ? '/admin/integrations' : '/integrations', icon: '🔌', permission: 'integration.view' },
+    ];
+  }, [isSuperAdmin, hasPermission, hasAnyRole, isPartner]);
 
   const filteredMenuItems = menuItems.filter((item) => {
-    if (!item.roles) return true;
-    return hasAnyRole(item.roles);
+    // Si super admin, tout est visible
+    if (isSuperAdmin()) return true;
+    
+    // Vérifier la permission si définie
+    if (item.permission) {
+      return hasPermission(item.permission);
+    }
+    
+    // Sinon, vérifier les rôles
+    if (item.roles) {
+      return hasAnyRole(item.roles);
+    }
+    
+    // Par défaut, visible
+    return true;
   });
 
   return (

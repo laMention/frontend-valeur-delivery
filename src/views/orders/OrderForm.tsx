@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { orderController } from '../../controllers/OrderController';
 import { partnerService } from '../../services/PartnerService';
@@ -13,7 +13,7 @@ import AddressInput from '../../components/common/AddressInput';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import type { Partner } from '../../models/Partner';
 import type { Zone } from '../../models/Zone';
-import type { Order, CreateOrderData, UpdateOrderData } from '../../services/OrderService';
+import { orderService, type CreateOrderData, type UpdateOrderData } from '../../services/OrderService';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { Role } from '../../models/User';
 
@@ -53,9 +53,11 @@ export default function OrderForm() {
   const [calculations, setCalculations] = useState<{
     distance_km?: number;
     estimated_time?: number;
-    vehicle_type?: 'moto' | 'voiture';
+    vehicle_type?: 'moto' | 'voiture' | 'velo';
     delivery_price?: number;
   }>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPartner, setIsPartner] = useState(false);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
   const { getUserRoles } = usePermissions();
@@ -423,6 +425,62 @@ export default function OrderForm() {
     }
   }, [uuid, user]);
 
+  // Pré-calcul des frais en temps réel (debounce 500 ms)
+  const fetchPreviewPricing = useCallback(async () => {
+    const hasPickup = (formData.pickup_latitude != null && formData.pickup_longitude != null) || (formData.pickup_address && formData.pickup_address.trim() !== '');
+    const hasDelivery = (formData.delivery_latitude != null && formData.delivery_longitude != null) || (formData.delivery_address && formData.delivery_address.trim() !== '');
+    if (!hasPickup || !hasDelivery) {
+      setCalculations({});
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const result = await orderService.previewPricing({
+        pickup_address: formData.pickup_address || undefined,
+        pickup_latitude: formData.pickup_latitude,
+        pickup_longitude: formData.pickup_longitude,
+        delivery_address: formData.delivery_address || undefined,
+        delivery_latitude: formData.delivery_latitude,
+        delivery_longitude: formData.delivery_longitude,
+        zone_id: formData.zone_uuid || undefined,
+        package_weight: formData.package_weight_kg,
+        is_express: formData.is_express,
+      });
+      setCalculations({
+        distance_km: result.distance_km,
+        estimated_time: result.estimated_time_minutes,
+        vehicle_type: result.vehicle_type as 'moto' | 'voiture' | 'velo',
+        delivery_price: result.delivery_fees,
+      });
+    } catch {
+      setCalculations({});
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    formData.pickup_address,
+    formData.pickup_latitude,
+    formData.pickup_longitude,
+    formData.delivery_address,
+    formData.delivery_latitude,
+    formData.delivery_longitude,
+    formData.zone_uuid,
+    formData.package_weight_kg,
+    formData.is_express,
+  ]);
+
+  useEffect(() => {
+    if (previewDebounceRef.current) {
+      clearTimeout(previewDebounceRef.current);
+    }
+    previewDebounceRef.current = setTimeout(fetchPreviewPricing, 500);
+    return () => {
+      if (previewDebounceRef.current) {
+        clearTimeout(previewDebounceRef.current);
+      }
+    };
+  }, [fetchPreviewPricing]);
+
   const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const deliveryPrice = Number(calculations.delivery_price) || 0;
   const totalAmount = Number(itemsTotal) + Number(deliveryPrice);
@@ -670,14 +728,14 @@ export default function OrderForm() {
             </div>
           </Card>
 
-          {/* Calculs automatiques (lecture seule) */}
-          <Card title="Calculs automatiques">
+          {/* Estimation de la livraison (temps réel avant sauvegarde) */}
+          <Card title="Estimation de la livraison">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Distance</label>
                 <p className="text-lg font-semibold">
-                  {calculations.distance_km !== undefined 
-                    ? `${calculations.distance_km} km` 
+                  {previewLoading ? '…' : calculations.distance_km !== undefined
+                    ? `${calculations.distance_km} km`
                     : 'Non calculé'}
                 </p>
               </div>
@@ -685,8 +743,8 @@ export default function OrderForm() {
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Temps estimé</label>
                 <p className="text-lg font-semibold">
-                  {calculations.estimated_time 
-                    ? `${calculations.estimated_time} min` 
+                  {previewLoading ? '…' : calculations.estimated_time != null
+                    ? `${calculations.estimated_time} min`
                     : 'Non calculé'}
                 </p>
               </div>
@@ -694,8 +752,8 @@ export default function OrderForm() {
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Véhicule attribué</label>
                 <p className="text-lg font-semibold">
-                  {calculations.vehicle_type 
-                    ? (calculations.vehicle_type === 'moto' ? '🏍️ Moto' : '🚗 Voiture')
+                  {previewLoading ? '…' : calculations.vehicle_type
+                    ? (calculations.vehicle_type === 'moto' ? '🏍️ Moto' : calculations.vehicle_type === 'velo' ? '🚲 Vélo' : '🚗 Voiture')
                     : 'Non déterminé'}
                 </p>
               </div>
@@ -703,12 +761,12 @@ export default function OrderForm() {
               <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded">
                 <label className="text-xs text-blue-600 dark:text-blue-400">Montant livraison</label>
                 <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                  {deliveryPrice > 0 ? `${Number(deliveryPrice).toFixed(2)} XOF` : 'Calculé à la sauvegarde'}
+                  {previewLoading ? '…' : deliveryPrice > 0 ? `${Number(deliveryPrice).toLocaleString('fr-FR')} XOF` : 'Saisissez les adresses'}
                 </p>
               </div>
             </div>
             <p className="mt-3 text-xs text-gray-500 italic">
-              * Les calculs sont effectués automatiquement lors de la sauvegarde de la commande
+              * Estimation mise à jour en temps réel. Le calcul officiel est enregistré à la sauvegarde de la commande.
             </p>
           </Card>
 
@@ -817,7 +875,7 @@ export default function OrderForm() {
                 </div>
                 <div className="flex justify-between items-center mt-2">
                   <span className="font-medium">Frais de livraison:</span>
-                  <span className="font-bold">{deliveryPrice > 0 ? `${Number(deliveryPrice).toFixed(2)} XOF` : 'Calculé à la sauvegarde'}</span>
+                  <span className="font-bold">{deliveryPrice > 0 ? `${Number(deliveryPrice).toLocaleString('fr-FR')} XOF` : '—'}</span>
                 </div>
                 <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
                   <span className="text-lg font-bold">Total général:</span>

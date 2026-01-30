@@ -132,6 +132,34 @@ class OrderService {
     window.URL.revokeObjectURL(url);
   }
 
+  /**
+   * Pré-calcul des frais de livraison (avant sauvegarde) — même logique que le calcul final.
+   */
+  async previewPricing(params: {
+    pickup_address?: string;
+    pickup_latitude?: number;
+    pickup_longitude?: number;
+    delivery_address?: string;
+    delivery_latitude?: number;
+    delivery_longitude?: number;
+    zone_id?: string;
+    package_weight?: number;
+    is_express?: boolean;
+  }): Promise<{
+    distance_km: number;
+    vehicle_type: string;
+    delivery_fees: number;
+    estimated_time_minutes: number;
+  }> {
+    const response = await apiClient.post<{
+      distance_km: number;
+      vehicle_type: string;
+      delivery_fees: number;
+      estimated_time_minutes: number;
+    }>('/orders/preview-pricing', params);
+    return response.data;
+  }
+
   async getRoute(uuid: string): Promise<{
     data: {
       route: {

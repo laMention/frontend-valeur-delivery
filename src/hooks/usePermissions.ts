@@ -1,5 +1,6 @@
 import { useAuth } from './useAuth';
 import type { Role } from '../utils/roleHelpers';
+import type { Permission } from '../models/User';
 
 export const usePermissions = () => {
   const { user } = useAuth();
@@ -31,14 +32,6 @@ export const usePermissions = () => {
   };
 
   /**
-   * Vérifie si l'utilisateur est Admin ou SuperAdmin
-   * Le SuperAdmin est implicitement reconnu comme Admin
-   */
-  const isAdmin = (): boolean => {
-    return hasRole('admin') || hasRole('super_admin');
-  };
-
-  /**
    * Vérifie si l'utilisateur est SuperAdmin
    */
   const isSuperAdmin = (): boolean => {
@@ -49,14 +42,21 @@ export const usePermissions = () => {
   };
 
   /**
-   * Vérifie si l'utilisateur est Partenaire
+   * Vérifie si l'utilisateur est Admin (pour affichage uniquement, pas pour les permissions)
+   */
+  const isAdmin = (): boolean => {
+    return hasRole('admin') || isSuperAdmin();
+  };
+
+  /**
+   * Vérifie si l'utilisateur est Partenaire (pour affichage uniquement, pas pour les permissions)
    */
   const isPartner = (): boolean => {
     return hasRole('partner');
   };
 
   /**
-   * Vérifie si l'utilisateur est Livreur
+   * Vérifie si l'utilisateur est Livreur (pour affichage uniquement, pas pour les permissions)
    */
   const isCourier = (): boolean => {
     return hasRole('courier');
@@ -74,42 +74,86 @@ export const usePermissions = () => {
   /**
    * Retourne le nombre de rôles de l'utilisateur
    */
-  const getRolesCount = (): number => {
-    return getUserRoles().length;
+  const getRoleCount = (): number => {
+    return user?.roles?.length || 0;
   };
 
   /**
-   * Vérifie si l'utilisateur peut créer (Admin, SuperAdmin, ou Partenaire selon le contexte)
+   * Vérifie si l'utilisateur a une permission spécifique
    */
-  const canCreate = (resourceType: 'user' | 'order' | 'partner' | 'courier'): boolean => {
+  const hasPermission = (permissionName: string): boolean => {
+    // Les super_admin ont toutes les permissions
     if (isSuperAdmin()) return true;
-    
-    switch (resourceType) {
-      case 'user':
-      case 'partner':
-      case 'courier':
-        return isAdmin();
-      case 'order':
-        return isAdmin() || isPartner();
-      default:
-        return false;
+
+    // Vérifier si l'utilisateur a la permission dans la liste consolidée
+    if (!user?.permissions || user.permissions.length === 0) {
+      return false;
     }
+
+    return user.permissions.some((permission: Permission) => permission.name === permissionName);
   };
 
   /**
-   * Vérifie si l'utilisateur peut modifier
+   * Vérifie si l'utilisateur peut créer une ressource spécifique
    */
-  const canUpdate = (resourceType: 'user' | 'order' | 'partner' | 'courier'): boolean => {
+  const canCreate = (resourceType: 'user' | 'order' | 'partner' | 'courier' | 'zone' | 'label' | 'pricing-rule' | 'role'): boolean => {
     if (isSuperAdmin()) return true;
-    return isAdmin() || (resourceType === 'order' && isPartner());
+
+    const permissionMap: Record<string, string> = {
+      'user': 'create-user',
+      'order': 'create-order',
+      'partner': 'create-partner',
+      'courier': 'create-courier',
+      'zone': 'create-zones',
+      'label': 'create-label',
+      'pricing-rule': 'create-pricing-rule',
+      'role': 'assign-roles',
+    };
+
+    const permission = permissionMap[resourceType];
+    return permission ? hasPermission(permission) : false;
   };
 
   /**
-   * Vérifie si l'utilisateur peut supprimer
+   * Vérifie si l'utilisateur peut modifier une ressource spécifique
    */
-  const canDelete = (resourceType: 'user' | 'order' | 'partner' | 'courier'): boolean => {
+  const canUpdate = (resourceType: 'user' | 'order' | 'partner' | 'courier' | 'zone' | 'label' | 'pricing-rule' | 'role'): boolean => {
     if (isSuperAdmin()) return true;
-    return isAdmin();
+
+    const permissionMap: Record<string, string> = {
+      'user': 'update-user',
+      'order': 'update-order',
+      'partner': 'update-partner',
+      'courier': 'update-courier',
+      'zone': 'update-zones',
+      'label': 'update-label',
+      'pricing-rule': 'update-pricing-rule',
+      'role': 'assign-roles',
+    };
+
+    const permission = permissionMap[resourceType];
+    return permission ? hasPermission(permission) : false;
+  };
+
+  /**
+   * Vérifie si l'utilisateur peut supprimer une ressource spécifique
+   */
+  const canDelete = (resourceType: 'user' | 'order' | 'partner' | 'courier' | 'zone' | 'label' | 'pricing-rule' | 'role'): boolean => {
+    if (isSuperAdmin()) return true;
+
+    const permissionMap: Record<string, string> = {
+      'user': 'delete-user',
+      'order': 'delete-order',
+      'partner': 'delete-partner',
+      'courier': 'delete-courier',
+      'zone': 'delete-zones',
+      'label': 'delete-label',
+      'pricing-rule': 'delete-pricing-rule',
+      'role': 'assign-roles',
+    };
+
+    const permission = permissionMap[resourceType];
+    return permission ? hasPermission(permission) : false;
   };
 
   /**
@@ -118,47 +162,47 @@ export const usePermissions = () => {
   const canAccess = (page: string): boolean => {
     if (isSuperAdmin()) return true;
 
-    const pagePermissions: Record<string, () => boolean> = {
-      '/users': () => isAdmin(),
-      '/partners': () => isAdmin(),
-      '/couriers': () => isAdmin(),
-      '/assignments': () => isAdmin(),
-      '/reconciliation': () => isAdmin(),
-      '/pricing': () => isAdmin(),
-      '/labels': () => isAdmin() || isPartner(),
-      '/routes': () => isAdmin() || isCourier(),
-      '/audit': () => isAdmin(),
-      '/permissions': () => isAdmin(),
-      '/reporting': () => isAdmin(),
-      '/zones': () => isAdmin(),
-      '/orders': () => isAdmin() || isPartner(),
-      '/profile': () => true, // Tous les utilisateurs peuvent accéder à leur profil
-      '/settings': () => true, // Tous les utilisateurs peuvent accéder aux paramètres
+    const pagePermissions: Record<string, string> = {
+      '/users': 'view-users',
+      '/partners': 'view-partners',
+      '/couriers': 'view-couriers',
+      '/assignments': 'assign-delivery',
+      '/reconciliation': 'view-reconciliation',
+      '/pricing': 'view-pricing',
+      '/labels': 'view-labels',
+      '/routes': 'view-routes',
+      '/audit': 'view-audit-logs',
+      '/permissions': 'assign-permissions',
+      '/reporting': 'view-reports',
+      '/zones': 'view-zones',
+      '/orders': 'view-orders',
+      '/integrations': 'integration.view',
+      '/admin/integrations': 'integrations.view_all',
+      '/partner/tracking': 'partner.tracking.view',
+      '/profile': '', // Tous les utilisateurs peuvent accéder à leur profil
+      '/settings': '', // Tous les utilisateurs peuvent accéder aux paramètres
     };
 
-    const checkPermission = pagePermissions[page];
-    return checkPermission ? checkPermission() : true;
+    const permission = pagePermissions[page];
+    if (!permission) return true; // Par défaut, autoriser l'accès si aucune permission n'est définie
+
+    return hasPermission(permission);
   };
 
   return {
-    // Vérifications de rôles
     hasRole,
     hasAnyRole,
     hasAllRoles,
-    isAdmin,
     isSuperAdmin,
+    isAdmin,
     isPartner,
     isCourier,
-    
-    // Utilitaires
     getUserRoles,
-    getRolesCount,
-    
-    // Vérifications de permissions
+    getRoleCount,
+    hasPermission,
     canCreate,
     canUpdate,
     canDelete,
     canAccess,
   };
 };
-
