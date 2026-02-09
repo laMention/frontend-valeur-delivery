@@ -299,6 +299,18 @@ export default function OrderDetail() {
               <p className="text-sm text-gray-600">Type de livraison</p>
               <p className="font-mono text-sm">{order.is_express ? 'Express' : 'Standard'}</p>
             </div>
+            <div>
+              <p className="text-sm text-gray-600">Paiement</p>
+              <p className="font-medium">
+                {order.is_prepaid ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    Prépayé
+                  </span>
+                ) : (
+                  <span className="text-gray-600 dark:text-gray-400">À payer</span>
+                )}
+              </p>
+            </div>
             {order.pricing && (
               <div>
                 <p className="text-sm text-gray-600">Véhicule</p>

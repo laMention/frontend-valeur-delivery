@@ -288,7 +288,14 @@ export default function OrderList() {
                     <td className={tailwindClasses.tableCell}>{formatCurrency(order.order_amount)}</td>
                     <td className={tailwindClasses.tableCell}>{formatCurrency(order?.pricing?.price || 0)}</td>
                     <td className={tailwindClasses.tableCell}>
-                      <Badge status={order.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge status={order.status} />
+                        {order.is_prepaid && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            Prépayé
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className={tailwindClasses.tableCell}>{formatDateTime(order.created_at)}</td>
                     <td className={tailwindClasses.tableCell}>

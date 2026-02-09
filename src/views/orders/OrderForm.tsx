@@ -77,7 +77,7 @@ export default function OrderForm() {
         const partnerRole = userRoles.find((r: any) => r.name === 'partner' || r.name === 'partenaire');
         setIsPartner(!!partnerRole);
 
-        console.log('✅ isPartner:', isPartner);
+        // console.log('✅ isPartner:', isPartner);
         
         // Si partenaire, récupérer le partenaire associé
         if (partnerRole) {
@@ -87,7 +87,7 @@ export default function OrderForm() {
     };
 
     // console.log(currentUser);
-    console.log(currentUser && isPartner ? currentUser?.partner?.uuid : '');
+    // console.log(currentUser && isPartner ? currentUser?.partner?.uuid : '');
 
   const [formData, setFormData] = useState<CreateOrderData>({
     order_number: '',
@@ -102,6 +102,7 @@ export default function OrderForm() {
     pickup_longitude: undefined,
     package_weight_kg: 1,
     is_express: false,
+    is_prepaid: false,
     zone_uuid: '',
     reserved_at: new Date().toISOString().slice(0, 16),
     total_amount: 0,
@@ -151,6 +152,7 @@ export default function OrderForm() {
           pickup_longitude: order.pickup_location?.longitude || undefined,
           package_weight_kg: order.package_weight_kg || 1,
           is_express: order.is_express || false,
+          is_prepaid: order.is_prepaid || false,
           zone_uuid: order.zone_uuid,
           reserved_at: order.reserved_at ? new Date(order.reserved_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
           total_amount: order.total_amount,
@@ -163,7 +165,7 @@ export default function OrderForm() {
             distance_km: order.pricing.distance_km,
             vehicle_type: order.pricing.vehicle_type,
             delivery_price: order.pricing.price,
-            estimated_time: undefined, // Non stocké actuellement
+            estimated_time: undefined,
           });
         }
         
@@ -780,6 +782,23 @@ export default function OrderForm() {
                 </label>
                 <p className="mt-1 text-xs text-gray-500">
                   La livraison express peut entraîner des frais supplémentaires
+                </p>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_prepaid ?? false}
+                    onChange={(e) => setFormData({ ...formData, is_prepaid: e.target.checked })}
+                    className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Colis prépayé (montant déjà payé par le client)
+                  </span>
+                </label>
+                <p className="mt-1 text-xs text-gray-500">
+                  Cochez si le montant a déjà été réglé (ex. paiement par le client)
                 </p>
               </div>
             </div>

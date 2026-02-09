@@ -16,6 +16,7 @@ export interface Order {
   };
   package_weight_kg?: number;
   is_express?: boolean;
+  is_prepaid?: boolean;
   zone_uuid: string;
   reserved_at: string;
   total_amount: number;
