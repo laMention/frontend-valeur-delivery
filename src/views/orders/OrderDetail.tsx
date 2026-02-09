@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import JsBarcode from 'jsbarcode';
 import { orderController } from '../../controllers/OrderController';
 import { orderService } from '../../services/OrderService';
 import { labelService } from '../../services/LabelService';
@@ -58,6 +59,8 @@ export default function OrderDetail() {
   const [loadingLabels, setLoadingLabels] = useState(false);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [deletingLabel, setDeletingLabel] = useState<string | null>(null);
+  const [generatingLabel, setGeneratingLabel] = useState(false);
+  const barcodeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadOrder = async () => {
     if (!uuid) return;
@@ -76,6 +79,21 @@ export default function OrderDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
+
+  useEffect(() => {
+    if (!order?.barcode_value || !barcodeCanvasRef.current) return;
+    try {
+      JsBarcode(barcodeCanvasRef.current, order.barcode_value, {
+        format: 'CODE128',
+        displayValue: false,
+        width: 2,
+        height: 60,
+        margin: 8,
+      });
+    } catch {
+      // Ignore invalid barcode value
+    }
+  }, [order?.barcode_value]);
 
   const loadLabels = async () => {
     if (!uuid) return;
@@ -106,10 +124,32 @@ export default function OrderDetail() {
         a.download = `etiquette-${order?.order_number}.pdf`;
         a.click();
       } else {
-        alert('Aucune étiquette générée pour cette commande');
+        showError('Aucune étiquette générée pour cette commande. Générez-en une d\'abord.');
       }
     } catch {
-      alert('Erreur lors du téléchargement');
+      showError('Erreur lors du téléchargement');
+    }
+  };
+
+  const handleGenerateLabel = async () => {
+    if (!uuid) return;
+    setGeneratingLabel(true);
+    try {
+      const result = await labelService.generate({
+        order_uuid: uuid,
+        format: 'A6',
+      });
+      if (result.data) {
+        success('Étiquette générée avec succès');
+        await loadLabels();
+        setShowLabelModal(true);
+      }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Erreur lors de la génération de l\'étiquette';
+      showError(msg);
+    } finally {
+      setGeneratingLabel(false);
     }
   };
 
@@ -243,9 +283,14 @@ export default function OrderDetail() {
               <Badge status={order.status} />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Montant total</p>
-              <p className="font-semibold text-lg">{formatCurrency(order.total_amount)}</p>
-            </div>            
+              <p className="text-sm text-gray-600">Montant de la commande</p>
+              <p className="font-semibold text-lg">{formatCurrency(order.order_amount)}</p>
+            </div> 
+            <div>
+              <p className="text-sm text-gray-600">Frais de livraison</p>
+              <p className="font-semibold text-lg">{formatCurrency(order.pricing?.price || 0)}</p>
+            </div> 
+            
             <div>
               <p className="text-sm text-gray-600">Date de réservation</p>
               <p className="font-semibold">{formatDateTime(order.reserved_at)}</p>
@@ -261,8 +306,13 @@ export default function OrderDetail() {
               </div>
             )}
             <div>
-              <p className="text-sm text-gray-600">Code-barres</p>
-              <p className="font-mono text-sm">{order.barcode_value}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-600">Code-barres</p>
+              <p className="font-mono text-sm text-gray-900 dark:text-gray-600">{order.barcode_value}</p>
+              {order.barcode_value && (
+                <div className="mt-2 p-3 bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-100 inline-block">
+                  <canvas ref={barcodeCanvasRef} aria-label={`Code-barres ${order.barcode_value}`} />
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -315,11 +365,13 @@ export default function OrderDetail() {
 
         <Card title="Actions" className="lg:col-span-2">
           <div className="flex gap-4 flex-wrap">
-            {(isAdmin() || isPartner() || isCourier()) && (
-              <Button onClick={handleScanBarcode}>
-                Scanner code-barres
-              </Button>
-            )}
+            {
+            // (isAdmin() || isPartner() || isCourier()) && (
+            //   <Button onClick={handleScanBarcode}>
+            //     Scanner code-barres
+            //   </Button>
+            // )
+            }
             {(isAdmin() || isPartner() || isCourier()) && (
               <Button 
                 variant="outline" 
@@ -341,32 +393,38 @@ export default function OrderDetail() {
             )}
             {(isAdmin() || isPartner()) && (
               <>
+                <Button
+                  variant="primary"
+                  onClick={handleGenerateLabel}
+                  disabled={generatingLabel}
+                >
+                  {generatingLabel ? 'Génération...' : 'Générer une étiquette'}
+                </Button>
                 {labels.length > 0 ? (
                   <>
                     <Button variant="outline" onClick={() => setShowLabelModal(true)}>
                       Voir l'étiquette
                     </Button>
-                    <Button 
-                      variant="danger" 
+                    <Button variant="outline" onClick={handleDownloadLabel}>
+                      Télécharger étiquette
+                    </Button>
+                    <Button
+                      variant="danger"
                       onClick={() => handleDeleteLabel(labels[0].uuid)}
                       disabled={deletingLabel === labels[0].uuid}
                     >
                       {deletingLabel === labels[0].uuid ? 'Suppression...' : 'Supprimer l\'étiquette'}
                     </Button>
                   </>
-                ) : (
-                  <Button variant="outline" onClick={handleDownloadLabel}>
-                    Télécharger étiquette
-                  </Button>
-                )}
+                ) : null}
                 {isAdmin() && order.status === 'pending' && (
                   <Button variant="primary" onClick={() => setShowAssignModal(true)}>
-                    ➕ Attribuer un livreur
+                    Attribuer un livreur
                   </Button>
                 )}
                 {canReassignOrder() && (
                   <Button variant="outline" onClick={() => setShowReassignModal(true)}>
-                    🔄 Réassigner la commande
+                    Réassigner la commande
                   </Button>
                 )}
               </>

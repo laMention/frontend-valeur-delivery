@@ -17,6 +17,7 @@
     "@mui/material": "^7.3.6",
     "@tailwindcss/vite": "^4.1.17",
     "axios": "^1.7.9",
+    "jsbarcode": "^3.12.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.1.3",

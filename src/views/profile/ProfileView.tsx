@@ -63,6 +63,24 @@ export default function ProfileView() {
               <p className="text-gray-900">{displayUser?.phone || '-'}</p>
             </div>
 
+            {/* Si l'utilisateur est partenaire, afficher les informations sur sa compagnie */}
+            {(displayUser?.partner?.company_name || displayUser?.partner?.address) && (
+              <>
+                {displayUser?.partner?.company_name && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-600 mb-1">Société / Compagnie</label>
+                    <p className="text-gray-900 dark:text-gray-900">{displayUser.partner.company_name}</p>
+                  </div>
+                )}
+                {displayUser?.partner?.address && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-600 mb-1">Adresse de l'entreprise</label>
+                    <p className="text-gray-900 dark:text-gray-900">{displayUser.partner.address}</p>
+                  </div>
+                )}
+              </>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rôles</label>
               <div className="flex flex-wrap gap-2 mt-1">
