@@ -18,6 +18,8 @@ export default function PartnerForm() {
     latitude: null as number | null,
     longitude: null as number | null,
     city: '',
+    webhook_url: '',
+    webhook_enabled: true,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +40,8 @@ export default function PartnerForm() {
           user_uuid: partner.user_uuid,
           company_name: partner.company_name,
           address: partner.address,
+          webhook_url: partner.webhook_url || '',
+          webhook_enabled: partner.webhook_enabled ?? true,
         });
       }
     } catch (error) {
@@ -53,9 +57,14 @@ export default function PartnerForm() {
     setLoading(true);
 
     try {
+      const payload = {
+        ...formData,
+        webhook_url: formData.webhook_url?.trim() || null,
+        webhook_enabled: formData.webhook_enabled,
+      };
       const result = uuid
-        ? await partnerService.update(uuid, formData)
-        : await partnerService.create(formData);
+        ? await partnerService.update(uuid, payload)
+        : await partnerService.create(payload);
 
       if (result.data) {
         navigate('/partners');
@@ -122,6 +131,27 @@ export default function PartnerForm() {
             required
             rows={3}
           />
+
+          <Input
+            label="URL Webhook (notifications de changement de statut)"
+            type="url"
+            value={formData.webhook_url}
+            onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })}
+            placeholder="https://votre-domaine.com/webhook"
+            className="mt-4"
+          />
+          <div className="flex items-center gap-3 mt-3">
+            <input
+              type="checkbox"
+              id="webhook_enabled"
+              checked={formData.webhook_enabled}
+              onChange={(e) => setFormData({ ...formData, webhook_enabled: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-primary-red focus:ring-primary-red"
+            />
+            <label htmlFor="webhook_enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Webhook activé
+            </label>
+          </div>
 
           <div className="flex gap-4 mt-6">
             <Button type="submit" loading={loading} variant="primary">

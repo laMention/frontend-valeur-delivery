@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { integrationService, type ApiKey } from '../../services/IntegrationService';
+import { integrationService, type ApiKey, type WebhookConfig } from '../../services/IntegrationService';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useToastContext } from '../../contexts/ToastContext';
 import Card from '../../components/common/Card';
@@ -48,21 +48,45 @@ function GenerateApiKeyForm({ onGenerate, loading }: GenerateApiKeyFormProps) {
   );
 }
 import DocumentationSection from './DocumentationSection';
+import WebhookSection from './WebhookSection';
 
 export default function IntegrationView() {
   const { success, error: showError } = useToastContext();
   const { hasPermission } = usePermissions();
   const [apiKey, setApiKey] = useState<ApiKey | null>(null);
+  const [webhookConfig, setWebhookConfig] = useState<WebhookConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [webhookSaving, setWebhookSaving] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
 
   useEffect(() => {
-    loadApiKey();
+    loadData();
   }, []);
 
-  const loadApiKey = async () => {
+  const loadData = async () => {
     setLoading(true);
+    try {
+      await Promise.all([loadApiKey(), loadWebhookConfig()]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadWebhookConfig = async () => {
+    try {
+      const result = await integrationService.getWebhookConfig();
+      if (result.success && result.data) {
+        setWebhookConfig(result.data);
+      } else {
+        setWebhookConfig({ webhook_url: null, webhook_enabled: false });
+      }
+    } catch {
+      setWebhookConfig({ webhook_url: null, webhook_enabled: false });
+    }
+  };
+
+  const loadApiKey = async () => {
     try {
       const result = await integrationService.getApiKey();
       if (result.success && result.data) {
@@ -74,8 +98,26 @@ export default function IntegrationView() {
       }
     } catch (error) {
       console.error('Error loading API key:', error);
+    }
+  };
+
+  const handleSaveWebhook = async (e: React.FormEvent, url: string, enabled: boolean) => {
+    e.preventDefault();
+    setWebhookSaving(true);
+    try {
+      const result = await integrationService.updateWebhookConfig({
+        webhook_url: url?.trim() || null,
+        webhook_enabled: enabled,
+      });
+      if (result.success && result.data) {
+        setWebhookConfig(result.data);
+        success(result.message || 'Configuration webhook mise à jour');
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erreur lors de la sauvegarde';
+      showError(msg);
     } finally {
-      setLoading(false);
+      setWebhookSaving(false);
     }
   };
 
@@ -317,6 +359,18 @@ export default function IntegrationView() {
             </div>
           </div>
         )}
+      </Card>
+
+      {/* Webhook / Intégration - notifications de changement de statut */}
+      <Card title="Webhook / Intégration" className="mt-6">
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          Configurez une URL pour recevoir automatiquement les notifications de changement de statut de vos commandes (En attente → Assignée → En livraison → Livrée, etc.).
+        </p>
+        <WebhookSection
+          config={webhookConfig}
+          onSave={handleSaveWebhook}
+          saving={webhookSaving}
+        />
       </Card>
 
       {/* Documentation */}

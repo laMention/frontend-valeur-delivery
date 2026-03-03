@@ -14,7 +14,9 @@ import { tailwindClasses } from '../../utils/tailwindClasses';
 import type { Partner } from '../../models/Partner';
 import type { Zone } from '../../models/Zone';
 import { orderService, type CreateOrderData, type UpdateOrderData } from '../../services/OrderService';
+import { getRouteDistanceAndDuration, geocodeAddress } from '../../services/routeDistanceService';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useGoogleMaps } from '../../hooks/useGoogleMaps';
 import type { Role } from '../../models/User';
 
 
@@ -58,6 +60,8 @@ export default function OrderForm() {
   }>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRequestIdRef = useRef(0);
+  const { isLoaded: isGoogleMapsLoaded } = useGoogleMaps();
   const [isPartner, setIsPartner] = useState(false);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
   const { getUserRoles } = usePermissions();
@@ -73,7 +77,7 @@ export default function OrderForm() {
         const partnerRole = userRoles.find((r: any) => r.name === 'partner' || r.name === 'partenaire');
         setIsPartner(!!partnerRole);
 
-        console.log('✅ isPartner:', isPartner);
+        // console.log('✅ isPartner:', isPartner);
         
         // Si partenaire, récupérer le partenaire associé
         if (partnerRole) {
@@ -83,7 +87,7 @@ export default function OrderForm() {
     };
 
     // console.log(currentUser);
-    console.log(currentUser && isPartner ? currentUser?.partner?.uuid : '');
+    // console.log(currentUser && isPartner ? currentUser?.partner?.uuid : '');
 
   const [formData, setFormData] = useState<CreateOrderData>({
     order_number: '',
@@ -98,6 +102,7 @@ export default function OrderForm() {
     pickup_longitude: undefined,
     package_weight_kg: 1,
     is_express: false,
+    is_prepaid: false,
     zone_uuid: '',
     reserved_at: new Date().toISOString().slice(0, 16),
     total_amount: 0,
@@ -147,6 +152,7 @@ export default function OrderForm() {
           pickup_longitude: order.pickup_location?.longitude || undefined,
           package_weight_kg: order.package_weight_kg || 1,
           is_express: order.is_express || false,
+          is_prepaid: order.is_prepaid || false,
           zone_uuid: order.zone_uuid,
           reserved_at: order.reserved_at ? new Date(order.reserved_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
           total_amount: order.total_amount,
@@ -159,7 +165,7 @@ export default function OrderForm() {
             distance_km: order.pricing.distance_km,
             vehicle_type: order.pricing.vehicle_type,
             delivery_price: order.pricing.price,
-            estimated_time: undefined, // Non stocké actuellement
+            estimated_time: undefined,
           });
         }
         
@@ -332,14 +338,19 @@ export default function OrderForm() {
         return;
       }
 
-      // Utiliser le montant total saisi par l'utilisateur, ou calculer depuis les items
+      // Montant commande (sans livraison) ; le backend ajoutera le prix de livraison pour total_amount
       const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const finalTotalAmount = formData.total_amount > 0 ? formData.total_amount : itemsTotal;
-      
+
       const data: CreateOrderData | UpdateOrderData = {
         ...formData,
         total_amount: finalTotalAmount,
         items: items.length > 0 ? items : undefined,
+        // Envoyer la distance et le temps de la prévisualisation pour enregistrer le bon prix de livraison
+        ...(calculations.distance_km != null && calculations.distance_km > 0 && {
+          distance_km: calculations.distance_km,
+          estimated_time_minutes: calculations.estimated_time ?? undefined,
+        }),
       };
 
       const result = uuid
@@ -425,7 +436,7 @@ export default function OrderForm() {
     }
   }, [uuid, user]);
 
-  // Pré-calcul des frais en temps réel (debounce 500 ms)
+  // Pré-calcul : distance/temps via Google Directions (frontend), prix/véhicule via API (backend). Seule la dernière réponse met à jour l'affichage.
   const fetchPreviewPricing = useCallback(async () => {
     const hasPickup = (formData.pickup_latitude != null && formData.pickup_longitude != null) || (formData.pickup_address && formData.pickup_address.trim() !== '');
     const hasDelivery = (formData.delivery_latitude != null && formData.delivery_longitude != null) || (formData.delivery_address && formData.delivery_address.trim() !== '');
@@ -433,9 +444,36 @@ export default function OrderForm() {
       setCalculations({});
       return;
     }
+    const requestId = ++previewRequestIdRef.current;
     setPreviewLoading(true);
     try {
-      const result = await orderService.previewPricing({
+      let origin: { lat: number; lng: number } | null = null;
+      let dest: { lat: number; lng: number } | null = null;
+      if (formData.pickup_latitude != null && formData.pickup_longitude != null) {
+        origin = { lat: formData.pickup_latitude, lng: formData.pickup_longitude };
+      } else if (formData.pickup_address?.trim()) {
+        origin = await geocodeAddress(formData.pickup_address.trim());
+      }
+      if (formData.delivery_latitude != null && formData.delivery_longitude != null) {
+        dest = { lat: formData.delivery_latitude, lng: formData.delivery_longitude };
+      } else if (formData.delivery_address?.trim()) {
+        dest = await geocodeAddress(formData.delivery_address.trim());
+      }
+
+      let frontendDistanceKm: number | undefined;
+      let frontendDurationMinutes: number | undefined;
+      if (origin && dest && isGoogleMapsLoaded) {
+        try {
+          const route = await getRouteDistanceAndDuration(origin, dest);
+          frontendDistanceKm = route.distance_km;
+          frontendDurationMinutes = route.duration_minutes;
+        } catch {
+          frontendDistanceKm = undefined;
+          frontendDurationMinutes = undefined;
+        }
+      }
+
+      const payload: Parameters<typeof orderService.previewPricing>[0] = {
         pickup_address: formData.pickup_address || undefined,
         pickup_latitude: formData.pickup_latitude,
         pickup_longitude: formData.pickup_longitude,
@@ -445,17 +483,25 @@ export default function OrderForm() {
         zone_id: formData.zone_uuid || undefined,
         package_weight: formData.package_weight_kg,
         is_express: formData.is_express,
-      });
+      };
+      if (frontendDistanceKm != null && frontendDistanceKm > 0) {
+        payload.distance_km = frontendDistanceKm;
+        payload.estimated_time_minutes = frontendDurationMinutes ?? 0;
+      }
+
+      const result = await orderService.previewPricing(payload);
+      if (requestId !== previewRequestIdRef.current) return;
       setCalculations({
-        distance_km: result.distance_km,
-        estimated_time: result.estimated_time_minutes,
+        distance_km: frontendDistanceKm,
+        estimated_time: frontendDurationMinutes,
         vehicle_type: result.vehicle_type as 'moto' | 'voiture' | 'velo',
         delivery_price: result.delivery_fees,
       });
     } catch {
+      if (requestId !== previewRequestIdRef.current) return;
       setCalculations({});
     } finally {
-      setPreviewLoading(false);
+      if (requestId === previewRequestIdRef.current) setPreviewLoading(false);
     }
   }, [
     formData.pickup_address,
@@ -467,19 +513,32 @@ export default function OrderForm() {
     formData.zone_uuid,
     formData.package_weight_kg,
     formData.is_express,
+    isGoogleMapsLoaded,
   ]);
 
   useEffect(() => {
-    if (previewDebounceRef.current) {
-      clearTimeout(previewDebounceRef.current);
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    const hasPickup = (formData.pickup_latitude != null && formData.pickup_longitude != null) || (formData.pickup_address && formData.pickup_address.trim() !== '');
+    const hasDelivery = (formData.delivery_latitude != null && formData.delivery_longitude != null) || (formData.delivery_address && formData.delivery_address.trim() !== '');
+    if (!hasPickup || !hasDelivery) {
+      setCalculations({});
+      return;
     }
+    setPreviewLoading(true);
+    setCalculations({});
     previewDebounceRef.current = setTimeout(fetchPreviewPricing, 500);
     return () => {
-      if (previewDebounceRef.current) {
-        clearTimeout(previewDebounceRef.current);
-      }
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
     };
-  }, [fetchPreviewPricing]);
+  }, [
+    fetchPreviewPricing,
+    formData.pickup_address,
+    formData.pickup_latitude,
+    formData.pickup_longitude,
+    formData.delivery_address,
+    formData.delivery_latitude,
+    formData.delivery_longitude,
+  ]);
 
   const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const deliveryPrice = Number(calculations.delivery_price) || 0;
@@ -725,18 +784,35 @@ export default function OrderForm() {
                   La livraison express peut entraîner des frais supplémentaires
                 </p>
               </div>
+
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_prepaid ?? false}
+                    onChange={(e) => setFormData({ ...formData, is_prepaid: e.target.checked })}
+                    className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Colis prépayé (montant déjà payé par le client)
+                  </span>
+                </label>
+                <p className="mt-1 text-xs text-gray-500">
+                  Cochez si le montant a déjà été réglé (ex. paiement par le client)
+                </p>
+              </div>
             </div>
           </Card>
 
-          {/* Estimation de la livraison (temps réel avant sauvegarde) */}
+          {/* Estimation de la livraison : distance réelle, temps réel, prix et véhicule provenant de l'API (grille tarifaire) */}
           <Card title="Estimation de la livraison">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Distance</label>
                 <p className="text-lg font-semibold">
                   {previewLoading ? '…' : calculations.distance_km !== undefined
-                    ? `${calculations.distance_km} km`
-                    : 'Non calculé'}
+                    ? `${Number(calculations.distance_km).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} km`
+                    : 'Saisissez récupération et livraison'}
                 </p>
               </div>
 
@@ -745,28 +821,28 @@ export default function OrderForm() {
                 <p className="text-lg font-semibold">
                   {previewLoading ? '…' : calculations.estimated_time != null
                     ? `${calculations.estimated_time} min`
-                    : 'Non calculé'}
+                    : '—'}
                 </p>
               </div>
 
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
-                <label className="text-xs text-gray-500 dark:text-gray-400">Véhicule attribué</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">Véhicule assigné</label>
                 <p className="text-lg font-semibold">
                   {previewLoading ? '…' : calculations.vehicle_type
                     ? (calculations.vehicle_type === 'moto' ? '🏍️ Moto' : calculations.vehicle_type === 'velo' ? '🚲 Vélo' : '🚗 Voiture')
-                    : 'Non déterminé'}
+                    : '—'}
                 </p>
               </div>
 
               <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded">
-                <label className="text-xs text-blue-600 dark:text-blue-400">Montant livraison</label>
+                <label className="text-xs text-blue-600 dark:text-blue-400">Montant de la livraison</label>
                 <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                   {previewLoading ? '…' : deliveryPrice > 0 ? `${Number(deliveryPrice).toLocaleString('fr-FR')} XOF` : 'Saisissez les adresses'}
                 </p>
               </div>
             </div>
             <p className="mt-3 text-xs text-gray-500 italic">
-              * Estimation mise à jour en temps réel. Le calcul officiel est enregistré à la sauvegarde de la commande.
+              * Prix et véhicule : selon la grille tarifaire
             </p>
           </Card>
 

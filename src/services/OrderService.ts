@@ -17,10 +17,13 @@ export interface CreateOrderData {
   pickup_longitude?: number;
   package_weight_kg: number;
   is_express?: boolean;
+  is_prepaid?: boolean;
   zone_uuid: string;
   reserved_at: string;
   total_amount?: number;
   order_amount?: number;
+  distance_km?: number;
+  estimated_time_minutes?: number;
   items?: Array<{
     product_name: string;
     quantity: number;
@@ -40,10 +43,13 @@ export interface UpdateOrderData {
   pickup_longitude?: number;
   package_weight_kg?: number;
   is_express?: boolean;
+  is_prepaid?: boolean;
   zone_uuid?: string;
   reserved_at?: string;
   total_amount?: number;
   order_amount?: number;
+  distance_km?: number;
+  estimated_time_minutes?: number;
   status?: Order['status'];
 }
 
@@ -133,7 +139,8 @@ class OrderService {
   }
 
   /**
-   * Pré-calcul des frais de livraison (avant sauvegarde) — même logique que le calcul final.
+   * Pré-calcul des frais de livraison (avant sauvegarde).
+   * Si distance_km est fourni (calculé côté client via Directions), le backend l'utilise pour la grille tarifaire.
    */
   async previewPricing(params: {
     pickup_address?: string;
@@ -145,6 +152,8 @@ class OrderService {
     zone_id?: string;
     package_weight?: number;
     is_express?: boolean;
+    distance_km?: number;
+    estimated_time_minutes?: number;
   }): Promise<{
     distance_km: number;
     vehicle_type: string;

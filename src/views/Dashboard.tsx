@@ -1,84 +1,74 @@
 import { useEffect, useState } from 'react';
-import { reportingService } from '../services/ReportingService';
-import Card from '../components/common/Card';
-import { tailwindClasses } from '../utils/tailwindClasses';
-import { formatCurrency } from '../utils/formatters';
-import RecentActivities from '../components/common/RecentActivities';
+import {
+  dashboardService,
+  type DashboardResponse,
+  type PartnerDashboardData,
+  type CourierDashboardData,
+  type AdminDashboardData,
+} from '../services/DashboardService';
+import PartnerDashboardView from './dashboard/PartnerDashboardView';
+import CourierDashboardView from './dashboard/CourierDashboardView';
+import AdminDashboardView from './dashboard/AdminDashboardView';
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<any>(null);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStats();
+    loadDashboard();
+    const interval = setInterval(loadDashboard, 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  const loadStats = async () => {
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await reportingService.getStats();
-      setStats(response.data);
-    } catch (error) {
-      console.error('Error loading stats:', error);
+      const response = await dashboardService.getDashboard();
+      setDashboard(response);
+    } catch (err: any) {
+      console.error('Error loading dashboard:', err);
+      setError(err?.response?.data?.message ?? 'Impossible de charger le tableau de bord.');
     } finally {
       setLoading(false);
     }
   };
 
   if (loading) {
-    return <div className="text-center py-12">Chargement...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <p className="text-gray-500 dark:text-gray-400">Chargement du tableau de bord...</p>
+      </div>
+    );
   }
 
-  return (
-    <div>
-      <h1 className={tailwindClasses.pageTitle}>Tableau de bord</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card>
-          <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">Total Commandes</p>
-            <p className="text-3xl font-bold text-primary-red">{stats?.total_orders || 0}</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">Livrées</p>
-            <p className="text-3xl font-bold text-green-600">{stats?.delivered_orders || 0}</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">En attente</p>
-            <p className="text-3xl font-bold text-yellow-600">{stats?.pending_orders || 0}</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">Retournées</p>
-            <p className="text-3xl font-bold text-red-600">{stats?.returned_orders || 0}</p>
-          </div>
-        </Card>
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
+        <p className="text-red-600 dark:text-red-400">{error}</p>
+        <button
+          type="button"
+          onClick={loadDashboard}
+          className="px-4 py-2 bg-primary-red text-white rounded-md hover:bg-red-800"
+        >
+          Réessayer
+        </button>
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card title="Performance">
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm text-gray-600">Temps moyen de livraison</p>
-              <p className="text-2xl font-bold">{stats?.average_delivery_time || 0} min</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Revenus totaux</p>
-              <p className="text-2xl font-bold">{formatCurrency(stats?.total_revenue || 0)}</p>
-            </div>
-          </div>
-        </Card>
+  if (!dashboard) {
+    return null;
+  }
 
-          <RecentActivities />
-      </div>
-    </div>
-  );
+  const { role, data } = dashboard;
+
+  if (role === 'partner') {
+    return <PartnerDashboardView data={data as PartnerDashboardData} />;
+  }
+  if (role === 'courier') {
+    return <CourierDashboardView data={data as CourierDashboardData} />;
+  }
+  return <AdminDashboardView data={data as AdminDashboardData} />;
 }
-

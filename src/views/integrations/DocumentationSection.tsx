@@ -13,6 +13,7 @@ export default function DocumentationSection({ apiKey }: DocumentationSectionPro
     responses: false,
     examples: false,
     bestPractices: false,
+    webhook: false,
   });
 
   const toggleSection = (section: string) => {
@@ -620,6 +621,73 @@ for ($i = 0; $i < $maxRetries; $i++) {
               <li>Latitude : -90 à 90</li>
               <li>Longitude : -180 à 180</li>
             </ul>
+          </div>
+        </div>
+      </Section>
+
+      {/* Webhook - Notifications de changement de statut */}
+      <Section
+        title="🔔 Webhook - Notifications de changement de statut"
+        isExpanded={expandedSections.webhook}
+        onToggle={() => toggleSection('webhook')}
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700 dark:text-gray-300">
+            Configurez une URL webhook dans la section « Webhook / Intégration » pour recevoir automatiquement les notifications de changement de statut de vos commandes. Valeur Delivery envoie une requête HTTP POST vers votre URL à chaque mise à jour.
+          </p>
+
+          <h4 className="font-semibold text-gray-800 dark:text-gray-200">
+            Format des requêtes envoyées
+          </h4>
+          <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 space-y-1">
+            <li><strong>Méthode :</strong> POST</li>
+            <li><strong>Content-Type :</strong> application/json</li>
+            <li><strong>Headers :</strong> User-Agent: ValeurDelivery-Webhook/1.0, X-Webhook-Event: order.status.updated</li>
+          </ul>
+
+          <h4 className="font-semibold text-gray-800 dark:text-gray-200 mt-4">
+            Événements envoyés
+          </h4>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            À chaque changement de statut d&apos;une commande (En attente → Assignée → En livraison → Livrée, etc.), le système envoie un payload JSON avec les informations de la commande.
+          </p>
+
+          <h4 className="font-semibold text-gray-800 dark:text-gray-200 mt-4">
+            Codes de statut
+          </h4>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Les champs <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">previous_status</code> et <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">current_status</code> utilisent les codes suivants :
+          </p>
+          <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 space-y-1">
+            <li><code>pending</code> — En attente</li>
+            <li><code>assigned</code> — Assignée</li>
+            <li><code>picked</code> — Collectée</li>
+            <li><code>delivering</code> — En livraison</li>
+            <li><code>delivered</code> — Livrée</li>
+            <li><code>returned</code> — Retournée</li>
+            <li><code>cancelled</code> — Annulée</li>
+          </ul>
+
+          <h4 className="font-semibold text-gray-800 dark:text-gray-200 mt-4">
+            Exemple de payload
+          </h4>
+          <CodeBlock
+            code={`{
+  "event": "order.status.updated",
+  "order_id": "uuid-de-la-commande",
+  "order_number": "ORD-12345",
+  "previous_status": "assigned",
+  "current_status": "delivering",
+  "courier_id": "uuid-du-livreur",
+  "updated_at": "2026-02-27T14:30:00Z"
+}`}
+            language="json"
+          />
+
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              <strong>Conseil :</strong> Votre endpoint doit répondre rapidement (HTTP 2xx) pour confirmer la réception. Valeur Delivery effectue jusqu&apos;à 3 tentatives en cas d&apos;échec.
+            </p>
           </div>
         </div>
       </Section>
