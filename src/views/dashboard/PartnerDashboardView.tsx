@@ -3,6 +3,7 @@ import Card from '../../components/common/Card';
 import { tailwindClasses } from '../../utils/tailwindClasses';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import type { PartnerDashboardData } from '../../services/DashboardService';
+import { useAuth } from '../../hooks/useAuth';
 
 const statusLabels: Record<string, string> = {
   pending: 'En attente',
@@ -44,13 +45,13 @@ interface Props {
 
 export default function PartnerDashboardView({ data }: Props) {
   const { orders, financial, recent_orders, activities } = data;
-
+  const { user } = useAuth();
   const deliveringCount = orders.delivering;
   const hasNoOrders = orders.total === 0;
 
   return (
     <div>
-      <h1 className={tailwindClasses.pageTitle}>Tableau de bord</h1>
+      <h1 className={tailwindClasses.pageTitle}>Tableau de bord: {user?.partner?.company_name}</h1>
 
       {hasNoOrders && (
         <p className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 rounded-lg">
@@ -58,8 +59,8 @@ export default function PartnerDashboardView({ data }: Props) {
         </p>
       )}
       {!hasNoOrders && deliveringCount > 0 && (
-        <p className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-800 dark:text-indigo-200 rounded-lg">
-          {deliveringCount} livraison{deliveringCount > 1 ? 's' : ''} en cours
+        <p className="mb-4 p-3 bg-indigo-50 dark:bg-red-900/20 text-indigo-800 dark:text-indigo-800 rounded-lg">
+          {deliveringCount} livraison{deliveringCount > 1 ? 's' : ''} en cours...
         </p>
       )}
 
@@ -103,14 +104,14 @@ export default function PartnerDashboardView({ data }: Props) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <Card title="Montant total des livraisons">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {formatCurrency(financial.total_amount)}
+        <Card title="Montant total des commandes">
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-500">
+            {formatCurrency(financial.total_amount || 0)}
           </p>
         </Card>
         <Card title="Frais de livraison cumulés">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {formatCurrency(financial.delivery_fees)}
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-500">
+            {formatCurrency(financial.delivery_fees || 0)}
           </p>
         </Card>
         <Card title="Facturables / Non facturables">
@@ -140,9 +141,16 @@ export default function PartnerDashboardView({ data }: Props) {
                     {order.courier_name && (
                       <p className="text-xs text-gray-500">Livreur : {order.courier_name}</p>
                     )}
+                    {order.billable && (
+                      <p className="text-xs text-gray-500">Prépayé</p>
+                    )}
+                    {!order.billable && (
+                      <p className="text-xs text-gray-500">À payer</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatCurrency(order.total_amount)}</p>
+                    <p className="font-medium text-gray-500 text-xs">Frais de livraison : {formatCurrency(order.delivery_fees)}</p>
                     <p className="text-xs text-gray-500">{formatDateTime(order.created_at)}</p>
                   </div>
                 </li>

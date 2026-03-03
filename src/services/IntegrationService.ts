@@ -38,6 +38,27 @@ class IntegrationService {
     const response = await apiClient.get<{ success: boolean; data: ApiKey[] }>('/integrations/partner/integrations');
     return response.data;
   }
+
+  /**
+   * Récupère la configuration webhook du partenaire
+   */
+  async getWebhookConfig(): Promise<{ success: boolean; data: WebhookConfig }> {
+    const response = await apiClient.get<{ success: boolean; data: WebhookConfig }>('/integrations/webhook');
+    return response.data;
+  }
+
+  /**
+   * Met à jour la configuration webhook du partenaire
+   */
+  async updateWebhookConfig(data: Partial<WebhookConfig>): Promise<{ success: boolean; data: WebhookConfig; message?: string }> {
+    const response = await apiClient.put<{ success: boolean; data: WebhookConfig; message?: string }>('/integrations/webhook', data);
+    return response.data;
+  }
+}
+
+export interface WebhookConfig {
+  webhook_url: string | null;
+  webhook_enabled: boolean;
 }
 
 export const integrationService = new IntegrationService();

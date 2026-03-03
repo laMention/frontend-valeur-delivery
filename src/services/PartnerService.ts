@@ -5,6 +5,8 @@ export interface Partner {
   user_uuid: string;
   company_name: string;
   address: string;
+  webhook_url?: string | null;
+  webhook_enabled?: boolean;
   metadata?: any;
   user?: {
     uuid: string;
@@ -20,12 +22,16 @@ export interface CreatePartnerData {
   user_uuid: string;
   company_name: string;
   address: string;
+  webhook_url?: string | null;
+  webhook_enabled?: boolean;
   metadata?: any;
 }
 
 export interface UpdatePartnerData {
   company_name?: string;
   address?: string;
+  webhook_url?: string | null;
+  webhook_enabled?: boolean;
   metadata?: any;
 }
 

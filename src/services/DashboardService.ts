@@ -29,6 +29,8 @@ export interface PartnerDashboardData {
     order_number: string;
     status: string;
     total_amount: number;
+    delivery_fees: number;
+    billable: boolean;
     created_at: string;
     courier_name?: string;
   }>;
